@@ -1,0 +1,21 @@
+[Desktop Entry]
+Type=Application
+Name=Dictate
+Name[ru]=Диктовка
+Comment=Voice dictation with transcription and text editing
+Comment[ru]=Голосовой ввод с распознаванием и редактированием
+Exec=dictate
+TryExec=dictate
+Icon=audio-input-microphone
+Categories=Utility;AudioVideo;
+Keywords=voice;dictation;speech;диктовка;
+StartupNotify=false
+Actions=Settings;Review;
+
+[Desktop Action Settings]
+Name=Настройки
+Exec=dictate settings
+
+[Desktop Action Review]
+Name=Открыть окно
+Exec=dictate show

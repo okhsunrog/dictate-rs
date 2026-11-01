@@ -1,0 +1,17 @@
+[package]
+name = "dictate"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Wayland voice dictation with a Qt Quick interface"
+
+[[bin]]
+name = "dictate"
+path = "src/main.rs"
+
+[dependencies]
+dictate-core = { version = "0.1.0", path = "../dictate-core" }
+qtbridge = "0.4.1"
+serde_json = "1.0.151"

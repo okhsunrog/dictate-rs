@@ -1,0 +1,13 @@
+/target
+.env*
+!.env.example
+config.toml
+*.wav
+*.ogg
+*.log
+/result*
+# Local QML tooling configuration
+.qmlls.ini
+__pycache__/
+.ruff_cache/
+.venv/

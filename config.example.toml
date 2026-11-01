@@ -1,0 +1,13 @@
+# Copy to ~/.config/dictate/config.toml and restrict access with chmod 600.
+# The service must support audio/transcriptions (model=chatgpt-transcribe)
+# and responses (using the editing model configured here).
+base_url = "https://proxy.example.com/v1"
+api_key = ""
+model = "your-editing-model"
+
+# Empty = automatic language detection or the default PipeWire input.
+language = ""
+microphone = ""
+
+# Send Ctrl+Shift+V instead of Ctrl+V in paste mode.
+paste_shift = false
