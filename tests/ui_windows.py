@@ -41,17 +41,22 @@ with tempfile.TemporaryDirectory(prefix="dictate-show-") as d:
         QT_FORCE_STDERR_LOGGING="1",
         QT_QUICK_CONTROLS_STYLE="org.kde.desktop",
     )
-    for key in ["DICTATE_API_KEY", "DICTATE_BASE_URL", "WAYLAND_DISPLAY"]:
+    for key in [
+        "DICTATE_API_KEY",
+        "DICTATE_BASE_URL",
+        "ELEVENLABS_API_KEY",
+        "WAYLAND_DISPLAY",
+    ]:
         env.pop(key, None)
     exe = str(ROOT / "target/debug" / binary)
     broken = env | {"QT_QUICK_CONTROLS_STYLE": "DictateMissingStyle"}
-    failed = run(exe, "demo", env=broken, check=False)
+    failed = run(exe, "show", env=broken, check=False)
     assert failed.returncode != 0, "QML loading failure must not report success"
     assert not (root / "dictate.sock").exists(), "failed startup left an IPC socket"
     assert not marker.exists(), "failed startup started microphone"
 
     def window():
-        title = "Диктовка|Настройки диктовки"
+        title = "Dictate|Dictate Settings"
         ids = run(
             "xdotool", "search", "--onlyvisible", "--name", title, check=False
         ).stdout.split()
@@ -61,7 +66,7 @@ with tempfile.TemporaryDirectory(prefix="dictate-show-") as d:
         p = subprocess.Popen([exe, "show"], env=env, stdout=log, stderr=log)
         try:
             wait_for(window, f"{binary}: initial manual window missing")
-            for state in ["show", "demo", "settings"]:
+            for state in ["show", "settings"]:
                 run(exe, state, env=env)
                 wid = wait_for(window, f"{binary}: {state} window missing")
                 time.sleep(0.3)

@@ -23,9 +23,6 @@ fmt:
 run *ARGS:
     cargo run -p dictate --locked -- {{ARGS}}
 
-demo:
-    cargo run -p dictate --locked -- demo
-
 settings:
     cargo run -p dictate --locked -- settings
 

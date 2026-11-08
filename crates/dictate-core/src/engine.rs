@@ -269,7 +269,7 @@ fn tick(w: &mut Worker) {
         // Idle first, then the error, so the UI's Idle status doesn't clobber it.
         (w.emit)(Event::Phase(Phase::Idle));
         (w.emit)(Event::Error(
-            "Микрофон отключился или PipeWire завершил запись".into(),
+            "Microphone disconnected or PipeWire stopped recording".into(),
         ));
     } else if w.started.elapsed().as_secs() >= MAX_SECONDS {
         // Hit the length cap: stop and process what we have.
@@ -329,7 +329,7 @@ fn on_retry(w: &mut Worker, next: Config) {
             if let Err(e) = effective.validate() {
                 (w.emit)(Event::Phase(Phase::Idle));
                 (w.emit)(Event::Error(format!(
-                    "{e}. Запись сохранена — настрой подключение и нажми «Повторить»"
+                    "{e}. Recording retained; configure the connection and retry"
                 )));
                 return;
             }
@@ -338,7 +338,7 @@ fn on_retry(w: &mut Worker, next: Config) {
             w.busy = true;
             spawn_job(w, id, effective, bytes);
         }
-        None => (w.emit)(Event::Error("Нет записи для повторной обработки".into())),
+        None => (w.emit)(Event::Error("No recording available to retry".into())),
     }
 }
 
@@ -377,7 +377,7 @@ fn spawn_job(w: &Worker, id: u64, config: Config, audio: Vec<u8>) {
                 Err(e) => (
                     original.clone(),
                     Some(format!(
-                        "Редактирование не удалось: {e}. Сохранена исходная расшифровка."
+                        "Editing failed: {e}. Original transcript retained."
                     )),
                 ),
             };
@@ -501,8 +501,8 @@ mod tests {
             },
             |_| {
                 Ok(Box::new(FakeBackend {
-                    transcript: "сырой текст".into(),
-                    edited: Ok("Готовый текст.".into()),
+                    transcript: "raw text".into(),
+                    edited: Ok("Edited text.".into()),
                     delay: Duration::ZERO,
                 }))
             },
@@ -519,8 +519,8 @@ mod tests {
                 edited,
                 warning,
             }) => {
-                assert_eq!(original, "сырой текст");
-                assert_eq!(edited, "Готовый текст.");
+                assert_eq!(original, "raw text");
+                assert_eq!(edited, "Edited text.");
                 assert!(warning.is_none());
             }
             other => panic!("expected result, got {other:?}"),
@@ -540,7 +540,7 @@ mod tests {
             },
             |_| {
                 Ok(Box::new(FakeBackend {
-                    transcript: "исходник".into(),
+                    transcript: "original".into(),
                     edited: Err("HTTP 500".into()),
                     delay: Duration::ZERO,
                 }))
@@ -566,8 +566,8 @@ mod tests {
             }
         }
         let (original, edited, warning) = result.expect("result event");
-        assert_eq!(original, "исходник");
-        assert_eq!(edited, "исходник", "falls back to transcript");
+        assert_eq!(original, "original");
+        assert_eq!(edited, "original", "falls back to transcript");
         assert!(warning.is_some(), "warns that editing failed");
         engine.shutdown();
     }
@@ -584,8 +584,8 @@ mod tests {
             },
             |_| {
                 Ok(Box::new(FakeBackend {
-                    transcript: "поздний".into(),
-                    edited: Ok("поздний результат".into()),
+                    transcript: "late".into(),
+                    edited: Ok("late result".into()),
                     delay: Duration::from_millis(300),
                 }))
             },
@@ -682,7 +682,7 @@ mod tests {
         impl Backend for Counted {
             fn transcribe(&self, _: Vec<u8>, _: &str) -> anyhow::Result<String> {
                 self.0.fetch_add(1, Ordering::SeqCst);
-                Ok("исходник".into())
+                Ok("original".into())
             }
             fn edit(&self, _: &str) -> anyhow::Result<String> {
                 anyhow::bail!("offline")

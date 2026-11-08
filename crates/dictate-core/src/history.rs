@@ -80,7 +80,7 @@ impl History {
                     "{}. {}",
                     i + 1,
                     if title.is_empty() {
-                        "Запись без текста"
+                        "Recording without text"
                     } else {
                         &title
                     }
@@ -96,21 +96,21 @@ mod tests {
     fn late_result_and_retry_preserve_user_edits() {
         let mut h = History::default();
         h.begin();
-        h.transcript("исходник".into());
-        h.edit("мои правки".into());
-        assert!(!h.result("исходник".into(), "ответ модели".into()));
-        h.transcript("исходник".into());
-        assert_eq!(h.current().unwrap().text, "мои правки");
+        h.transcript("original".into());
+        h.edit("my edits".into());
+        assert!(!h.result("original".into(), "model response".into()));
+        h.transcript("original".into());
+        assert_eq!(h.current().unwrap().text, "my edits");
     }
     #[test]
     fn new_recording_and_selection_keep_previous_drafts() {
         let mut h = History::default();
         h.begin();
-        h.result("первый".into(), "Первый.".into());
-        h.edit("Первый с правкой.".into());
+        h.result("first".into(), "First.".into());
+        h.edit("First with edits.".into());
         h.begin();
         h.cancel_recording();
-        assert_eq!(h.current().unwrap().text, "Первый с правкой.");
+        assert_eq!(h.current().unwrap().text, "First with edits.");
         for _ in 0..12 {
             h.begin();
             h.captured();

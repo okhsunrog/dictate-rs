@@ -49,7 +49,7 @@ while running:
         QT_QUICK_BACKEND="software",
         WAYLAND_DEBUG="client",
     )
-    for key in ["DICTATE_API_KEY", "DICTATE_BASE_URL"]:
+    for key in ["DICTATE_API_KEY", "DICTATE_BASE_URL", "ELEVENLABS_API_KEY"]:
         env.pop(key, None)
     binary = str(ROOT / "target/debug/dictate")
     log_path = output / "wayland.log"
@@ -87,7 +87,6 @@ while running:
             )[0]
             assert editor["pid"] == process.pid
             assert editor["app_id"] == "ru.okhsunrog.dictate"
-            command("demo")
             time.sleep(0.3)
             run(
                 "niri",
@@ -97,11 +96,11 @@ while running:
                 "--id",
                 str(editor["id"]),
                 "--path",
-                str(output / "qt-niri-demo.png"),
+                str(output / "qt-niri-preview.png"),
                 env=env,
             )
             wait_for(
-                lambda: (output / "qt-niri-demo.png").exists(),
+                lambda: (output / "qt-niri-preview.png").exists(),
                 "preview screenshot missing",
             )
             command("settings")

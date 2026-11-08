@@ -7,11 +7,9 @@ focused application.
 
 The application uses **Rust, Qt Bridge for Rust and Qt Quick/QML**. A small
 LayerShellQt overlay shows recording time, microphone level and processing status
-without taking keyboard focus. The interface is currently in Russian.
+without taking keyboard focus. The interface is in English.
 
-[Руководство на русском](docs/guide-ru.md)
-
-![Dictate preview](docs/screenshot.png)
+[User guide](docs/guide.md)
 
 ## What it does
 
@@ -51,7 +49,7 @@ The Nix flake provides the development tools and Qt dependencies on Linux x86_64
 git clone https://github.com/okhsunrog/dictate-rs.git
 cd dictate-rs
 nix develop
-just demo       # sample text; no microphone or network access
+just run show   # open the window without recording
 just settings   # configure the service
 just run        # start recording; run again to stop
 ```
@@ -85,20 +83,34 @@ Open `dictate settings`, or copy [config.example.toml](config.example.toml) to
 No personal endpoint or model is selected by default. Existing saved settings
 continue to work.
 
-The service must implement both endpoints:
+Choose the recognition provider in Settings: **ChatGPT proxy** (the default for
+existing configs) or **ElevenLabs Scribe v2**. Recognition and editing use
+[`llm-relay`](https://github.com/okhsunrog/llm-relay), pinned to a Git revision
+with file transcription support. The released crate 1.0.1 does not yet include it.
+
+Set `stt_provider = "elevenlabs"` and provide `ELEVENLABS_API_KEY` or the separate
+`elevenlabs_api_key` setting to use ElevenLabs. The existing URL, API key and model
+continue to configure the editor. Requests are sent once; retry is an explicit
+user action, with no automatic fallback between paid providers.
+
+The relevant endpoints are:
 
 | Endpoint | Contract |
 | --- | --- |
 | `POST /v1/audio/transcriptions` | Bearer authentication; multipart audio file, `model=chatgpt-transcribe`, `response_format=json`, optional `language`; JSON response with a `text` string |
-| `POST /v1/responses` | The configured editing model; `instructions`, text `input`, `stream=false`, `store=false`, `reasoning.effort=none`; completed response with `output_text` content |
+| ElevenLabs `POST https://api.elevenlabs.io/v1/speech-to-text` | Separate `xi-api-key`; multipart audio, `model_id=scribe_v2`, optional `language_code`; no diarization or audio-event tags |
+| `POST /v1/chat/completions` | The configured editing model; system prompt and user transcript, `stream=false`, `store=false`, `reasoning_effort=none`; completed choice with `finish_reason=stop` |
 
 This contract is intended for a compatible proxy; it is not a claim that every
 OpenAI-compatible service or model supports these requests. The selected editing
-model must accept `reasoning.effort=none`.
+model must accept `reasoning_effort=none`. Editing now uses Chat Completions
+instead of the previous Responses endpoint; the service must support it.
 
-`DICTATE_API_KEY` and `DICTATE_BASE_URL` override saved values without being
+`DICTATE_API_KEY`, `DICTATE_BASE_URL` and `ELEVENLABS_API_KEY` override saved values without being
 written back to the config. Recognition language and the PipeWire microphone
 target are optional; empty values use automatic detection and the default input.
+Regional language tags such as `en-US` are reduced to the primary ISO language
+code (`en`) for recognition.
 
 ## Commands and shortcuts
 
@@ -112,7 +124,6 @@ target are optional; empty values use automatic detection and the default input.
 | `dictate cancel` | Cancel recording or processing |
 | `dictate retry` | Retry the retained audio, or only editing if a transcript exists |
 | `dictate quit` | Stop the application |
-| `dictate demo` / `dictate demo-overlay` | Preview the interface without recording or network calls |
 
 The output mode is chosen when recording starts. Any subsequent recording command
 stops that recording without changing its mode. `toggle [preview|clipboard|paste]`
@@ -176,7 +187,7 @@ checks mapped layer-shell surfaces, absence of a keyboard-focus request, preview
 opening, instance IPC and shutdown. Live dictation has also been exercised on
 Niri; automatic paste still depends on the desktop's portal implementation.
 
-For an explicit test against your configured service, `just e2e path/to/audio.ogg ru`
+For an explicit test against your configured service, `just e2e path/to/audio.ogg en`
 sends that file and prints the transcript and edited result.
 
 - `crates/dictate-core`: recording, state machine, API client, drafts, config and paste.

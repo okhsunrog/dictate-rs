@@ -30,9 +30,9 @@ fn lock_path() -> std::path::PathBuf {
 }
 /// Acquire the process-wide recording lock, or fail if another instance holds it.
 fn acquire_record_lock() -> Result<Flock<File>> {
-    let file = File::create(lock_path()).context("Не удалось открыть файл блокировки записи")?;
+    let file = File::create(lock_path()).context("Failed to open the recording lock file")?;
     Flock::lock(file, FlockArg::LockExclusiveNonblock)
-        .map_err(|_| anyhow::anyhow!("Запись уже идёт в другом экземпляре Диктовки"))
+        .map_err(|_| anyhow::anyhow!("Another Dictate instance is already recording"))
 }
 
 pub struct Recording {
@@ -73,7 +73,7 @@ impl Recording {
         }
         let mut child = cmd
             .spawn()
-            .context("Не удалось запустить pw-record; установи pipewire-audio")?;
+            .context("Failed to start pw-record; install pipewire-audio")?;
         let mut stdout = child.stdout.take().unwrap();
         let samples: Samples = Arc::new(Mutex::new(Vec::new()));
         let level = Arc::new(AtomicU32::new(0));
@@ -149,10 +149,10 @@ impl Recording {
             .take()
             .unwrap()
             .join()
-            .map_err(|_| anyhow::anyhow!("Ошибка потока записи"))??;
+            .map_err(|_| anyhow::anyhow!("Recording thread failed"))??;
         let samples = self.samples.lock().unwrap();
         if samples.len() < RATE as usize / 4 {
-            bail!("Запись слишком короткая или микрофон недоступен");
+            bail!("Recording is too short or the microphone is unavailable");
         }
         encode_wav(&samples)
     }

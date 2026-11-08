@@ -39,7 +39,7 @@ impl PasteService {
                                 emit(PasteEvent::Connected);
                             }
                             Err(e) => emit(PasteEvent::Error(format!(
-                                "Не удалось подключить автовставку: {e}"
+                                "Failed to connect automatic paste: {e}"
                             ))),
                         }
                     }
@@ -50,7 +50,7 @@ impl PasteService {
                                 emit(PasteEvent::Connected);
                             }
                             let c = connection.as_mut().ok_or_else(|| {
-                                anyhow::anyhow!("Сначала подключи автовставку в настройках")
+                                anyhow::anyhow!("Connect automatic paste in settings first")
                             })?;
                             c.hold_modifier("ctrl")?;
                             let result = (|| {
@@ -69,7 +69,7 @@ impl PasteService {
                             Err(e) => {
                                 connection = None;
                                 emit(PasteEvent::Error(format!(
-                                    "Текст скопирован, но вставка не удалась: {e}"
+                                    "Text copied, but paste failed: {e}"
                                 )));
                             }
                         }
@@ -107,12 +107,12 @@ fn read_token(path: &Path) -> Result<Option<String>> {
         Ok(s) if !s.trim().is_empty() => Ok(Some(s)),
         Ok(_) => Ok(None),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(e).context("Не удалось прочитать разрешение автовставки"),
+        Err(e) => Err(e).context("Failed to read automatic paste permission"),
     }
 }
 fn persist_token(path: &Path, token: Option<&str>) -> Result<()> {
     if let Some(token) = token {
-        let dir = path.parent().context("Нет каталога разрешений")?;
+        let dir = path.parent().context("Permission directory not found")?;
         std::fs::create_dir_all(dir)?;
         std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
         let mut file = tempfile::NamedTempFile::new_in(dir)?;
@@ -121,7 +121,7 @@ fn persist_token(path: &Path, token: Option<&str>) -> Result<()> {
         file.write_all(token.as_bytes())?;
         file.as_file().sync_all()?;
         file.persist(path)
-            .context("Не удалось сохранить разрешение автовставки")?;
+            .context("Failed to save automatic paste permission")?;
     } else {
         match std::fs::remove_file(path) {
             Ok(()) => {}
@@ -148,7 +148,7 @@ fn connect_saved() -> Result<EiType> {
     use nix::fcntl::{Flock, FlockArg};
     use std::os::unix::fs::OpenOptionsExt;
     let path = token_path()?;
-    let dir = path.parent().context("Нет каталога разрешений")?;
+    let dir = path.parent().context("Permission directory not found")?;
     std::fs::create_dir_all(dir)?;
     std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
     let file = std::fs::OpenOptions::new()
@@ -167,7 +167,9 @@ fn connect_saved() -> Result<EiType> {
             token,
         )
         .map_err(|_| {
-            anyhow::anyhow!("KDE не подтвердил подключение. Разреши автовставку в настройках.")
+            anyhow::anyhow!(
+                "KDE did not confirm the connection. Allow automatic paste in settings."
+            )
         })
     })
 }

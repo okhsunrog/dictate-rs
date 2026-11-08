@@ -104,18 +104,15 @@ class Backend(http.server.BaseHTTPRequestHandler):
                 self.server.failed.set()
                 return
             value = {"text": "Original test transcript"}
-        elif self.path.endswith("/responses"):
+        elif self.path.endswith("/chat/completions"):
             self.server.edits += 1
             self.server.edit_started.set()
             self.server.release_edit.wait(6)
             value = {
-                "status": "completed",
-                "output": [
+                "choices": [
                     {
-                        "type": "message",
-                        "content": [
-                            {"type": "output_text", "text": "Edited test transcript."}
-                        ],
+                        "finish_reason": "stop",
+                        "message": {"content": "Edited test transcript."},
                     }
                 ],
             }
@@ -184,6 +181,7 @@ while running:
         )
         env.pop("DICTATE_API_KEY", None)
         env.pop("DICTATE_BASE_URL", None)
+        env.pop("ELEVENLABS_API_KEY", None)
         # Exercise ordinary windows here; tests/wayland.py checks layer-shell.
         env.pop("WAYLAND_DISPLAY", None)
         executable = str(ROOT / "target" / "debug" / binary)
@@ -207,7 +205,7 @@ while running:
                 ).stdout.split()
 
             def main_window():
-                title = "^(Диктовка|Настройки диктовки)$"
+                title = "^(Dictate|Dictate Settings)$"
                 matches = run(
                     "xdotool", "search", "--onlyvisible", "--name", title, check=False
                 ).stdout.split()
@@ -249,7 +247,7 @@ while running:
                     )
                     print(run("xwininfo", "-root", "-tree").stdout, flush=True)
                     for w in run(
-                        "xdotool", "search", "--name", "^Диктовка$", check=False
+                        "xdotool", "search", "--name", "^Dictate$", check=False
                     ).stdout.split():
                         print(run("xwininfo", "-id", w).stdout, flush=True)
                         print(run("xprop", "-id", w, "_NET_WM_PID").stdout, flush=True)

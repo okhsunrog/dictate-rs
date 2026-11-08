@@ -14,7 +14,7 @@ QtObject {
         property bool historyOpen: false
         width: 640; height: bridge.settingsVisible ? 640 : empty ? 320 : 560
         minimumWidth: 420; minimumHeight: 280
-        title: bridge.settingsVisible ? qsTr("Настройки диктовки") : qsTr("Диктовка")
+        title: bridge.settingsVisible ? qsTr("Dictate Settings") : qsTr("Dictate")
         visible: bridge.windowVisible
         color: palette.window
         onClosing: close => { close.accepted = false; bridge.teardown() }
@@ -39,22 +39,22 @@ QtObject {
             RowLayout {
                 anchors.fill: parent
                 anchors.leftMargin: 16; anchors.rightMargin: 12
-                Label { text: bridge.settingsVisible ? qsTr("Настройки") : qsTr("Диктовка"); font.bold: true; font.pointSize: 14; Layout.fillWidth: true }
+                Label { text: bridge.settingsVisible ? qsTr("Settings") : qsTr("Dictate"); font.bold: true; font.pointSize: 14; Layout.fillWidth: true }
                 ToolButton {
-                    text: bridge.settingsVisible ? qsTr("К тексту") : qsTr("Настройки")
+                    text: bridge.settingsVisible ? qsTr("Back to text") : qsTr("Settings")
                     icon.name: bridge.settingsVisible ? "go-previous" : "configure"
                     onClicked: bridge.settingsVisible = !bridge.settingsVisible
                 }
                 ToolButton {
-                    text: qsTr("Ещё"); icon.name: "application-menu"
+                    text: qsTr("More"); icon.name: "application-menu"
                     onClicked: appMenu.popup()
                     Menu {
                         id: appMenu
-                        MenuItem { text: qsTr("История"); enabled: JSON.parse(bridge.historyJson).length > 1; checkable: true; checked: win.historyOpen; onTriggered: win.historyOpen = !win.historyOpen }
-                        MenuItem { text: qsTr("Исходная расшифровка"); enabled: bridge.originalText.length > 0; checkable: true; checked: bridge.showingOriginal; onTriggered: bridge.toggleOriginal() }
-                        MenuItem { text: bridge.originalText.length ? qsTr("Повторить редактирование") : qsTr("Повторить распознавание"); enabled: bridge.canRetry && bridge.phase === 0; onTriggered: bridge.retry() }
+                        MenuItem { text: qsTr("History"); enabled: JSON.parse(bridge.historyJson).length > 1; checkable: true; checked: win.historyOpen; onTriggered: win.historyOpen = !win.historyOpen }
+                        MenuItem { text: qsTr("Original transcript"); enabled: bridge.originalText.length > 0; checkable: true; checked: bridge.showingOriginal; onTriggered: bridge.toggleOriginal() }
+                        MenuItem { text: bridge.originalText.length ? qsTr("Retry editing") : qsTr("Retry transcription"); enabled: bridge.canRetry && bridge.phase === 0; onTriggered: bridge.retry() }
                         MenuSeparator {}
-                        MenuItem { text: qsTr("Выйти из приложения"); onTriggered: bridge.teardown() }
+                        MenuItem { text: qsTr("Quit"); onTriggered: bridge.teardown() }
                     }
                 }
             }
@@ -71,14 +71,14 @@ QtObject {
                     visible: win.historyOpen && count > 1
                     enabled: bridge.phase === 0
                     onActivated: bridge.selectSession(currentIndex)
-                    Accessible.name: qsTr("Последние диктовки, только в памяти")
+                    Accessible.name: qsTr("Recent dictations, in memory only")
                 }
                 RowLayout {
                     visible: !win.empty
                     Layout.fillWidth: true
                     BusyIndicator { running: bridge.phase > 1; visible: running; implicitWidth: 24; implicitHeight: 24 }
                     Label { text: bridge.statusText; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                    ToolButton { text: qsTr("Остановить"); visible: bridge.phase > 1; onClicked: bridge.cancel() }
+                    ToolButton { text: qsTr("Stop"); visible: bridge.phase > 1; onClicked: bridge.cancel() }
                 }
                 Frame {
                     visible: bridge.errorText.length > 0
@@ -88,8 +88,8 @@ QtObject {
                         Label { text: bridge.errorText; wrapMode: Text.WordWrap; Layout.fillWidth: true; Accessible.role: Accessible.AlertMessage }
                         Flow {
                             Layout.fillWidth: true; spacing: 8
-                            Button { text: qsTr("Повторить"); visible: !bridge.pasteError; enabled: bridge.canRetry && bridge.phase === 0; onClicked: bridge.retry() }
-                            Button { text: qsTr("Настроить подключение"); onClicked: bridge.settingsVisible = true }
+                            Button { text: qsTr("Retry"); visible: !bridge.pasteError; enabled: bridge.canRetry && bridge.phase === 0; onClicked: bridge.retry() }
+                            Button { text: qsTr("Configure connection"); onClicked: bridge.settingsVisible = true }
                         }
                     }
                 }
@@ -98,12 +98,12 @@ QtObject {
                     Layout.fillWidth: true; Layout.fillHeight: true
                     spacing: 16
                     Item { Layout.fillHeight: true }
-                    Label { text: qsTr("Преврати речь в текст"); font.pointSize: 18; font.bold: true; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter }
-                    Label { text: qsTr("Запиши, проверь и скопируй."); Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter }
-                    Button { text: qsTr("Начать запись"); highlighted: true; Layout.alignment: Qt.AlignHCenter; onClicked: bridge.toggle() }
+                    Label { text: qsTr("Turn speech into text"); font.pointSize: 18; font.bold: true; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter }
+                    Label { text: qsTr("Record, review and copy."); Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter }
+                    Button { text: qsTr("Start recording"); highlighted: true; Layout.alignment: Qt.AlignHCenter; onClicked: bridge.toggle() }
                     Item { Layout.fillHeight: true }
                 }
-                Label { visible: bridge.showingOriginal; text: qsTr("Исходная расшифровка · только чтение") }
+                Label { visible: bridge.showingOriginal; text: qsTr("Original transcript · read-only") }
                 ScrollView {
                     visible: !win.empty
                     Layout.fillWidth: true; Layout.fillHeight: true
@@ -116,16 +116,16 @@ QtObject {
                         padding: 16
                         selectByMouse: true
                         font.pointSize: 12
-                        placeholderText: bridge.phase > 1 ? qsTr("Распознаём запись…") : qsTr("Текст диктовки")
+                        placeholderText: bridge.phase > 1 ? qsTr("Transcribing recording…") : qsTr("Dictation text")
                         onTextChanged: if (!syncing && !bridge.showingOriginal) bridge.editDraft(text)
-                        Accessible.name: bridge.showingOriginal ? qsTr("Исходная расшифровка") : qsTr("Текст диктовки")
+                        Accessible.name: bridge.showingOriginal ? qsTr("Original transcript") : qsTr("Dictation text")
                     }
                 }
                 RowLayout {
                     visible: !win.empty
                     Layout.fillWidth: true; spacing: 8
-                    Button { text: qsTr("Копировать"); highlighted: true; enabled: editor.text.trim().length > 0; onClicked: bridge.copyCurrent() }
-                    Button { text: bridge.phase === 1 ? qsTr("Завершить") : qsTr("Новая запись"); enabled: bridge.phase <= 1; onClicked: bridge.toggle() }
+                    Button { text: qsTr("Copy"); highlighted: true; enabled: editor.text.trim().length > 0; onClicked: bridge.copyCurrent() }
+                    Button { text: bridge.phase === 1 ? qsTr("Finish") : qsTr("New recording"); enabled: bridge.phase <= 1; onClicked: bridge.toggle() }
                     Item { Layout.fillWidth: true }
                 }
             }
@@ -134,28 +134,51 @@ QtObject {
                 contentWidth: availableWidth
                 ColumnLayout {
                     width: parent.width; spacing: 10
-                    Label { text: qsTr("Распознавание"); font.bold: true }
-                    Label { text: qsTr("Адрес сервиса (с /v1)") }
-                    TextField { Layout.fillWidth: true; text: bridge.cfgBaseUrl; onTextEdited: bridge.cfgBaseUrl = text; Accessible.name: qsTr("Адрес сервиса") }
-                    Label { text: qsTr("Ключ API") }
-                    TextField { Layout.fillWidth: true; echoMode: TextInput.Password; text: bridge.cfgApiKey; onTextEdited: bridge.cfgApiKey = text; Accessible.name: qsTr("Ключ API") }
-                    Label { text: qsTr("Ключ из DICTATE_API_KEY используется без сохранения в файл. Введённый здесь ключ хранится локально с правами 0600."); wrapMode: Text.WordWrap; Layout.fillWidth: true; opacity: 0.7 }
-                    Label { text: qsTr("Автовставка"); font.bold: true }
-                    Label { text: qsTr("Текст вставляется в активное на момент готовности приложение."); wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                    CheckBox { text: qsTr("Совместимость с терминалами"); checked: bridge.cfgPasteShift; onToggled: bridge.cfgPasteShift = checked }
-                    Label { text: bridge.pasteError ? qsTr("Не удалось подключить автовставку. Подробности — ниже.") : bridge.pasteReady ? (bridge.pasteSaved ? qsTr("Автовставка подключена. Разрешение сохранено.") : qsTr("Подключено на этот запуск. Портал не разрешил сохранить доступ.")) : bridge.pasteSaved ? qsTr("Разрешение сохранено. Подключение восстановится автоматически при вставке.") : qsTr("Разреши автовставку один раз для следующих запусков."); wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                    Button { text: bridge.pasteReady ? qsTr("Автовставка подключена") : bridge.pasteSaved ? qsTr("Проверить подключение") : qsTr("Подключить автовставку"); enabled: !bridge.pasteReady; onClicked: bridge.connectPaste() }
-                    Label { text: qsTr("Дополнительные настройки"); font.bold: true }
-                    Label { text: qsTr("Язык (пусто — определить автоматически)") }
+                    Label { text: qsTr("Transcription"); font.bold: true }
+                    ComboBox {
+                        Layout.fillWidth: true
+                        model: [qsTr("ChatGPT proxy"), qsTr("ElevenLabs · Scribe v2")]
+                        currentIndex: bridge.cfgSttProvider
+                        onActivated: bridge.cfgSttProvider = currentIndex
+                        Accessible.name: qsTr("Transcription provider")
+                    }
+                    Label { visible: bridge.cfgSttProvider === 1; text: qsTr("ElevenLabs API key") }
+                    TextField {
+                        visible: bridge.cfgSttProvider === 1
+                        Layout.fillWidth: true
+                        echoMode: TextInput.Password
+                        text: bridge.cfgElevenlabsApiKey
+                        onTextEdited: bridge.cfgElevenlabsApiKey = text
+                        Accessible.name: qsTr("ElevenLabs API key")
+                    }
+                    Label {
+                        visible: bridge.cfgSttProvider === 1
+                        text: qsTr("ELEVENLABS_API_KEY overrides the saved key. A key entered here is stored locally with mode 0600.")
+                        wrapMode: Text.WordWrap; Layout.fillWidth: true; opacity: 0.7
+                    }
+                    Label { text: qsTr("Editing"); font.bold: true }
+                    Label { visible: bridge.cfgSttProvider === 0; text: qsTr("This service also handles transcription."); wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    Label { text: qsTr("Service URL (including /v1)") }
+                    TextField { Layout.fillWidth: true; text: bridge.cfgBaseUrl; onTextEdited: bridge.cfgBaseUrl = text; Accessible.name: qsTr("Service URL") }
+                    Label { text: qsTr("API key") }
+                    TextField { Layout.fillWidth: true; echoMode: TextInput.Password; text: bridge.cfgApiKey; onTextEdited: bridge.cfgApiKey = text; Accessible.name: qsTr("API key") }
+                    Label { text: qsTr("DICTATE_API_KEY overrides the saved key. A key entered here is stored locally with mode 0600."); wrapMode: Text.WordWrap; Layout.fillWidth: true; opacity: 0.7 }
+                    Label { text: qsTr("Automatic paste"); font.bold: true }
+                    Label { text: qsTr("Text is pasted into the application focused when processing finishes."); wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    CheckBox { text: qsTr("Terminal compatibility"); checked: bridge.cfgPasteShift; onToggled: bridge.cfgPasteShift = checked }
+                    Label { text: bridge.pasteError ? qsTr("Failed to connect automatic paste. See details below.") : bridge.pasteReady ? (bridge.pasteSaved ? qsTr("Automatic paste connected. Permission saved.") : qsTr("Connected for this session. The portal did not allow access to be saved.")) : bridge.pasteSaved ? qsTr("Permission saved. The connection will be restored when pasting.") : qsTr("Allow automatic paste once for future launches."); wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    Button { text: bridge.pasteReady ? qsTr("Automatic paste connected") : bridge.pasteSaved ? qsTr("Check connection") : qsTr("Connect automatic paste"); enabled: !bridge.pasteReady; onClicked: bridge.connectPaste() }
+                    Label { text: qsTr("Advanced settings"); font.bold: true }
+                    Label { text: qsTr("Language (empty for automatic detection)") }
                     TextField { Layout.fillWidth: true; text: bridge.cfgLanguage; placeholderText: "ru, en"; onTextEdited: bridge.cfgLanguage = text }
-                    Label { text: qsTr("Модель редактирования") }
+                    Label { text: qsTr("Editing model") }
                     TextField { Layout.fillWidth: true; text: bridge.cfgModel; onTextEdited: bridge.cfgModel = text }
-                    Label { text: qsTr("Микрофон PipeWire (пусто — системный)") }
+                    Label { text: qsTr("PipeWire microphone (empty for default)") }
                     TextField { Layout.fillWidth: true; text: bridge.cfgMicrophone; onTextEdited: bridge.cfgMicrophone = text }
-                    Button { text: qsTr("Сохранить настройки"); enabled: bridge.phase === 0; onClicked: bridge.saveSettings() }
+                    Button { text: qsTr("Save settings"); enabled: bridge.phase === 0; onClicked: bridge.saveSettings() }
                     Label { text: bridge.settingsStatus; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                    Button { text: qsTr("Продолжить обработку записи"); visible: bridge.canRetry; enabled: bridge.phase === 0; onClicked: bridge.retry() }
-                    Label { text: qsTr("Последние 10 текстов хранятся до выхода из приложения. Аудио для повтора — до следующей записи."); wrapMode: Text.WordWrap; Layout.fillWidth: true; opacity: 0.7 }
+                    Button { text: qsTr("Resume processing"); visible: bridge.canRetry; enabled: bridge.phase === 0; onClicked: bridge.retry() }
+                    Label { text: qsTr("The last 10 drafts are kept until exit. Audio is retained for retry until the next recording."); wrapMode: Text.WordWrap; Layout.fillWidth: true; opacity: 0.7 }
                 }
             }
         }
@@ -178,11 +201,11 @@ QtObject {
             RowLayout {
                 Label { text: bridge.phase === 1 ? "●" : "✓"; color: bridge.phase === 1 ? "#da4453" : palette.text; font.pointSize: 15 }
                 Label {
-                    text: bridge.phase === 1 ? qsTr("Запись · %1:%2").arg(Math.floor(bridge.seconds / 60)).arg(("0" + bridge.seconds % 60).slice(-2)) : bridge.errorText.length ? qsTr("Не удалось начать запись") : bridge.statusText
+                    text: bridge.phase === 1 ? qsTr("Recording · %1:%2").arg(Math.floor(bridge.seconds / 60)).arg(("0" + bridge.seconds % 60).slice(-2)) : bridge.errorText.length ? qsTr("Failed to start recording") : bridge.statusText
                     Layout.fillWidth: true; wrapMode: Text.WordWrap
                 }
-                Button { text: qsTr("Завершить"); visible: bridge.phase === 1; onClicked: bridge.toggle() }
-                ToolButton { text: bridge.phase === 0 ? qsTr("Закрыть") : qsTr("Отмена"); onClicked: { if (bridge.phase === 0) bridge.osdVisible = false; else bridge.cancel() } }
+                Button { text: qsTr("Finish"); visible: bridge.phase === 1; onClicked: bridge.toggle() }
+                ToolButton { text: bridge.phase === 0 ? qsTr("Close") : qsTr("Cancel"); onClicked: { if (bridge.phase === 0) bridge.osdVisible = false; else bridge.cancel() } }
             }
             ProgressBar { visible: bridge.phase === 1; Layout.fillWidth: true; value: bridge.level }
             Label { visible: bridge.errorText.length > 0; text: bridge.errorText; wrapMode: Text.WordWrap; Layout.fillWidth: true }

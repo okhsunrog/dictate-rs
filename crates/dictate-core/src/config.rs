@@ -33,6 +33,16 @@ pub struct Config {
     pub output: OutputMode,
     pub paste_shift: bool,
     pub microphone: String,
+    pub stt_provider: SttProvider,
+    pub elevenlabs_api_key: String,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SttProvider {
+    #[default]
+    ChatgptProxy,
+    Elevenlabs,
 }
 impl Default for Config {
     fn default() -> Self {
@@ -44,13 +54,15 @@ impl Default for Config {
             output: OutputMode::Preview,
             paste_shift: false,
             microphone: String::new(),
+            stt_provider: SttProvider::default(),
+            elevenlabs_api_key: String::new(),
         }
     }
 }
 impl Config {
     pub fn path() -> Result<PathBuf> {
         Ok(directories::ProjectDirs::from("", "", "dictate")
-            .context("Не найден каталог настроек")?
+            .context("Configuration directory not found")?
             .config_dir()
             .join("config.toml"))
     }
@@ -60,21 +72,27 @@ impl Config {
     pub fn load() -> Result<Self> {
         let path = Self::path()?;
         match std::fs::read_to_string(path) {
-            Ok(text) => toml::from_str(&text).context("Некорректный config.toml"),
+            Ok(text) => toml::from_str(&text).context("Invalid config.toml"),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
             Err(e) => Err(e.into()),
         }
     }
     /// The config actually used at runtime: the saved values with
-    /// `DICTATE_API_KEY` / `DICTATE_BASE_URL` overlaid. Use this for the proxy
+    /// `DICTATE_API_KEY`, `DICTATE_BASE_URL` and `ELEVENLABS_API_KEY` overlaid. Use this for the proxy
     /// and for validation before recording; never persist it.
     pub fn effective(&self) -> Self {
         self.with_overrides(
             std::env::var("DICTATE_API_KEY").ok(),
             std::env::var("DICTATE_BASE_URL").ok(),
+            std::env::var("ELEVENLABS_API_KEY").ok(),
         )
     }
-    fn with_overrides(&self, key: Option<String>, url: Option<String>) -> Self {
+    fn with_overrides(
+        &self,
+        key: Option<String>,
+        url: Option<String>,
+        elevenlabs: Option<String>,
+    ) -> Self {
         let mut config = self.clone();
         if let Some(key) = key {
             config.api_key = key;
@@ -82,10 +100,13 @@ impl Config {
         if let Some(url) = url {
             config.base_url = url;
         }
+        if let Some(key) = elevenlabs {
+            config.elevenlabs_api_key = key;
+        }
         config
     }
     pub fn validate(&self) -> Result<()> {
-        let url = reqwest::Url::parse(&self.base_url).context("Некорректный адрес прокси")?;
+        let url = url::Url::parse(&self.base_url).context("Invalid proxy URL")?;
         if !["http", "https"].contains(&url.scheme())
             || url.host_str().is_none()
             || !url.username().is_empty()
@@ -93,23 +114,27 @@ impl Config {
             || url.query().is_some()
             || url.fragment().is_some()
         {
-            bail!("Нужен HTTP(S) адрес прокси без пароля, query и fragment");
+            bail!("Proxy URL must use HTTP(S) without credentials, query or fragment");
         }
         if self.api_key.trim().is_empty() {
-            bail!("Укажи ключ API в настройках");
+            bail!("Set the API key in settings");
         }
         if self.model.trim().is_empty() {
-            bail!("Укажи модель редактирования");
+            bail!("Set the editing model");
+        }
+        if self.stt_provider == SttProvider::Elevenlabs && self.elevenlabs_api_key.trim().is_empty()
+        {
+            bail!("Set the ElevenLabs key in settings or ELEVENLABS_API_KEY");
         }
         if !self.language.is_empty()
-            && !(self.language.len() >= 2
+            && !((2..=3).contains(&self.language.split('-').next().unwrap_or_default().len())
                 && self.language.len() <= 12
                 && self
                     .language
                     .bytes()
                     .all(|c| c.is_ascii_alphabetic() || c == b'-'))
         {
-            bail!("Язык: ru, en или пустое поле для автоопределения");
+            bail!("Use an ISO language code such as ru or en, or leave empty for detection");
         }
         Ok(())
     }
@@ -163,7 +188,7 @@ mod tests {
         c.base_url = "https://example.com/v1?x=1".into();
         assert!(c.validate().is_err(), "url with query");
         c = base();
-        c.language = "русский".into();
+        c.language = "français".into();
         assert!(c.validate().is_err(), "non-ascii language");
     }
     #[test]
@@ -194,13 +219,20 @@ mod tests {
         // The env key overlays the effective config for the run, but must not
         // mutate the value that gets serialised to disk.
         let file_cfg = Config::default(); // empty api_key on disk
-        let effective = file_cfg.with_overrides(Some("env-secret".into()), None);
+        let effective = file_cfg.with_overrides(
+            Some("env-secret".into()),
+            None,
+            Some("eleven-secret".into()),
+        );
         assert_eq!(effective.api_key, "env-secret", "effective picks up env");
         assert_eq!(file_cfg.api_key, "", "the saved config is untouched");
+        assert_eq!(effective.elevenlabs_api_key, "eleven-secret");
+        assert!(file_cfg.elevenlabs_api_key.is_empty());
         let serialised = toml::to_string_pretty(&file_cfg).unwrap();
         assert!(
             !serialised.contains("env-secret"),
             "env key must not be written to disk: {serialised}"
         );
+        assert!(!serialised.contains("eleven-secret"));
     }
 }

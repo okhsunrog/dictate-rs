@@ -4,7 +4,7 @@
 //! notifications are updated on the Qt thread. Toolkit types stay out of the core.
 
 use dictate_core::{
-    Config, Engine, Event, OutputMode, Phase, clipboard, ipc,
+    Config, Engine, Event, OutputMode, Phase, SttProvider, clipboard, ipc,
     paste::{PasteEvent, PasteService},
 };
 use qtbridge::{QmlObject, qobject};
@@ -15,7 +15,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 /// Socket name for the application instance.
 pub const SOCKET: &str = "dictate";
 const PHASE_IDLE: i32 = 0;
-const PHASE_RECORDING: i32 = 1;
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 pub fn initialized() -> bool {
@@ -55,6 +54,8 @@ pub struct Bridge {
     cfg_base_url: String,
     cfg_api_key: String,
     cfg_model: String,
+    cfg_stt_provider: i32,
+    cfg_elevenlabs_api_key: String,
     cfg_language: String,
     cfg_microphone: String,
     cfg_output: i32,
@@ -68,7 +69,6 @@ pub struct Bridge {
     history: dictate_core::history::History,
     audio_available: bool,
     ignoring_results: bool,
-    demo_recording: bool,
     // Rust-only fields.
     initialized: bool,
     config: Config,
@@ -84,7 +84,7 @@ impl Default for Bridge {
     fn default() -> Self {
         Self {
             phase: PHASE_IDLE,
-            status_text: String::from("Готово к записи"),
+            status_text: String::from("Ready to record"),
             seconds: 0,
             level: 0.0,
             edited_text: String::default(),
@@ -99,6 +99,8 @@ impl Default for Bridge {
             cfg_base_url: String::default(),
             cfg_api_key: String::default(),
             cfg_model: String::default(),
+            cfg_stt_provider: 0,
+            cfg_elevenlabs_api_key: String::new(),
             cfg_language: String::default(),
             cfg_microphone: String::default(),
             cfg_output: 0,
@@ -112,7 +114,6 @@ impl Default for Bridge {
             history: Default::default(),
             audio_available: false,
             ignoring_results: false,
-            demo_recording: false,
             initialized: false,
             config: Config::default(),
             delivery: OutputMode::Preview,
@@ -178,6 +179,8 @@ notifying_setters! {
     cfg_base_url: String => set_cfg_base_url, cfg_base_url_changed;
     cfg_api_key: String => set_cfg_api_key, cfg_api_key_changed;
     cfg_model: String => set_cfg_model, cfg_model_changed;
+    cfg_stt_provider: i32 => set_cfg_stt_provider, cfg_stt_provider_changed;
+    cfg_elevenlabs_api_key: String => set_cfg_elevenlabs_api_key, cfg_elevenlabs_api_key_changed;
     cfg_language: String => set_cfg_language, cfg_language_changed;
     cfg_microphone: String => set_cfg_microphone, cfg_microphone_changed;
     cfg_output: i32 => set_cfg_output, cfg_output_changed;
@@ -192,6 +195,22 @@ notifying_setters! {
 
 #[qobject(ConvertToCamelCase)]
 impl Bridge {
+    qproperty!(
+        "cfgSttProvider",
+        Member = cfg_stt_provider,
+        Notify = cfg_stt_provider_changed
+    );
+    #[qsignal]
+    fn cfg_stt_provider_changed(&mut self);
+
+    qproperty!(
+        "cfgElevenlabsApiKey",
+        Member = cfg_elevenlabs_api_key,
+        Notify = cfg_elevenlabs_api_key_changed
+    );
+    #[qsignal]
+    fn cfg_elevenlabs_api_key_changed(&mut self);
+
     qproperty!("phase", Member = phase, Notify = phase_changed);
 
     #[qsignal]
@@ -421,6 +440,11 @@ impl Bridge {
         self.set_cfg_base_url(String::from(&config.base_url));
         self.set_cfg_api_key(String::from(&config.api_key));
         self.set_cfg_model(String::from(&config.model));
+        self.set_cfg_stt_provider(match config.stt_provider {
+            SttProvider::ChatgptProxy => 0,
+            SttProvider::Elevenlabs => 1,
+        });
+        self.set_cfg_elevenlabs_api_key(config.elevenlabs_api_key.clone());
         self.set_cfg_language(String::from(&config.language));
         self.set_cfg_microphone(String::from(&config.microphone));
         self.set_cfg_output(output_to_i32(config.output));
@@ -474,8 +498,6 @@ impl Bridge {
             Some("cancel") => self.cancel(),
             Some("retry") => self.retry(),
             Some("quit") => self.teardown(),
-            Some("demo") => self.demo(),
-            Some("demo-overlay") => self.demo_overlay(),
             Some("settings") => {
                 self.set_settings_visible(true);
                 self.present();
@@ -487,46 +509,8 @@ impl Bridge {
         }
     }
 
-    /// Show a finished result without touching the mic or network (for a quick
-    /// visual check of the preview layout).
-    pub fn demo(&mut self) {
-        let original = "Э-э, привет Саша, встречаемся в среду в три, нет, в четверг в два. \
-            Возьми ноутбук. Добавь в конец спасибо за помощь";
-        let edited = "Привет, Саша! Перенесём встречу на четверг, в 14:00. Возьми ноутбук.\n\n\
-            Спасибо за помощь!";
-        if self.phase != PHASE_IDLE {
-            return;
-        }
-        self.audio_available = false;
-        self.set_error_text(String::new());
-        self.set_paste_error(false);
-        self.history.begin();
-        self.history.captured();
-        self.history.result(original.into(), edited.into());
-        self.refresh_draft();
-        self.set_settings_visible(false);
-        self.set_status_text(String::from("Текст готов — проверь и скопируй"));
-        self.set_window_visible(true);
-    }
-
-    /// Show the OSD overlay with a sample recording state.
-    pub fn demo_overlay(&mut self) {
-        if self.phase != PHASE_IDLE {
-            return;
-        }
-        self.demo_recording = true;
-        self.set_phase(PHASE_RECORDING);
-        self.set_seconds(12);
-        self.set_level(0.4);
-        self.set_osd_visible(true);
-    }
-
     #[qslot]
     pub fn toggle(&mut self) {
-        if self.demo_recording {
-            self.cancel();
-            return;
-        }
         if self.phase == PHASE_IDLE {
             // A `toggle <mode>` invocation overrides the saved output for this
             // recording only.
@@ -546,12 +530,6 @@ impl Bridge {
 
     #[qslot]
     pub fn cancel(&mut self) {
-        if self.demo_recording {
-            self.demo_recording = false;
-            self.set_phase(PHASE_IDLE);
-            self.set_osd_visible(false);
-            return;
-        }
         self.ignoring_results = true;
         if let Some(engine) = self.engine.as_ref() {
             engine.cancel();
@@ -612,7 +590,7 @@ impl Bridge {
         }
         match clipboard::set_text(&text) {
             Ok(()) => {
-                self.toast("Скопировано");
+                self.toast("Copied");
                 true
             }
             Err(e) => {
@@ -644,9 +622,9 @@ impl Bridge {
         let showing = self.showing_original;
         self.set_showing_original(!showing);
         let status = if showing {
-            "Отредактированный текст"
+            "Edited text"
         } else {
-            "Исходная расшифровка (только чтение)"
+            "Original transcript (read-only)"
         };
         self.set_status_text(String::from(status));
     }
@@ -654,10 +632,16 @@ impl Bridge {
     #[qslot]
     pub fn save_settings(&mut self) {
         if self.phase != PHASE_IDLE {
-            self.set_settings_status(String::from("Сначала заверши запись и обработку"));
+            self.set_settings_status(String::from("Finish recording and processing first"));
             return;
         }
         let candidate = Config {
+            stt_provider: if self.cfg_stt_provider == 1 {
+                SttProvider::Elevenlabs
+            } else {
+                SttProvider::ChatgptProxy
+            },
+            elevenlabs_api_key: self.cfg_elevenlabs_api_key.trim().to_owned(),
             base_url: self.cfg_base_url.trim().to_owned(),
             api_key: self.cfg_api_key.trim().to_owned(),
             model: self.cfg_model.trim().to_owned(),
@@ -669,7 +653,7 @@ impl Bridge {
         match candidate.save() {
             Ok(()) => {
                 self.config = candidate;
-                self.set_settings_status(String::from("Настройки сохранены"));
+                self.set_settings_status(String::from("Settings saved"));
             }
             Err(e) => self.set_settings_status(e.to_string()),
         }
@@ -677,7 +661,7 @@ impl Bridge {
 
     #[qslot]
     pub fn connect_paste(&mut self) {
-        self.set_settings_status(String::from("Подтверди доступ в системном диалоге…"));
+        self.set_settings_status(String::from("Confirm access in the system dialog…"));
         if let Some(paste) = self.paste.as_ref() {
             paste.connect();
         }
@@ -726,17 +710,20 @@ impl Bridge {
                         self.set_level(0.0);
                         self.set_error_text(String::default());
                         self.set_window_visible(false);
-                        self.set_status_text(String::from("Запись"));
+                        self.set_status_text(String::from("Recording"));
                     }
-                    Phase::Transcribing => self.set_status_text(String::from("Распознаём запись…")),
-                    Phase::Editing => self
-                        .set_status_text(String::from("Редактируем текст… Исходник уже доступен.")),
+                    Phase::Transcribing => {
+                        self.set_status_text(String::from("Transcribing recording…"))
+                    }
+                    Phase::Editing => self.set_status_text(String::from(
+                        "Editing text… Original transcript available.",
+                    )),
                     Phase::Idle => {} // Terminal messages survive the phase transition.
                 }
             }
             Event::Captured => {
                 self.history.captured();
-                self.set_status_text(String::from("Запись сохранена"));
+                self.set_status_text(String::from("Recording retained"));
                 self.audio_available = true;
                 self.refresh_draft();
                 self.set_settings_visible(false);
@@ -755,14 +742,14 @@ impl Bridge {
                 }
                 self.ignoring_results = false;
                 self.set_osd_visible(false);
-                self.set_status_text(String::from("Обработка остановлена"));
+                self.set_status_text(String::from("Processing cancelled"));
             }
             Event::Meter { seconds, level } => {
                 self.set_seconds(seconds as i32);
                 self.set_level((level as f64 * 5.0).clamp(0.0, 1.0));
             }
             Event::Error(e) => {
-                self.set_status_text(String::from("Не удалось выполнить действие"));
+                self.set_status_text(String::from("Action failed"));
                 self.set_error_text(e);
                 if self.audio_available {
                     self.set_settings_visible(false);
@@ -780,7 +767,7 @@ impl Bridge {
                 let accepted = self.history.result(original, edited.clone());
                 self.refresh_draft();
                 if let Some(w) = warning {
-                    self.set_status_text(String::from("Исходный текст сохранён"));
+                    self.set_status_text(String::from("Original text retained"));
                     self.set_error_text(w);
                     if self.delivery != OutputMode::Preview {
                         self.set_window_visible(true);
@@ -788,26 +775,26 @@ impl Bridge {
                     return;
                 }
                 if !accepted {
-                    self.set_status_text(String::from("Твои правки сохранены"));
+                    self.set_status_text(String::from("Your edits have been saved"));
                     return;
                 }
-                self.set_status_text(String::from("Текст готов"));
+                self.set_status_text(String::from("Text ready"));
                 match self.delivery {
-                    OutputMode::Preview => self.set_status_text(String::from("Текст готов")),
+                    OutputMode::Preview => self.set_status_text(String::from("Text ready")),
                     mode => {
                         if let Err(e) = clipboard::set_text(&edited) {
                             self.set_error_text(e.to_string());
                             self.set_window_visible(true);
                         } else if mode == OutputMode::Clipboard {
-                            self.toast("Скопировано");
+                            self.toast("Copied");
                         } else if self.paste_ready || self.paste_saved {
-                            self.set_status_text(String::from("Текст готов. Вставляем…"));
+                            self.set_status_text(String::from("Text ready. Pasting…"));
                             if let Some(paste) = self.paste.as_ref() {
                                 paste.paste(self.config.paste_shift);
                             }
                         } else {
                             self.set_paste_error(true);
-                            self.set_error_text(String::from("Текст скопирован. Подключи автовставку в настройках или вставь вручную."));
+                            self.set_error_text(String::from("Text copied. Connect automatic paste in settings or paste manually."));
                             self.set_window_visible(true);
                         }
                     }
@@ -827,18 +814,18 @@ impl Bridge {
                 }
                 self.set_paste_saved(PasteService::has_saved_permission());
                 self.set_settings_status(String::from(if PasteService::has_saved_permission() {
-                    "Автовставка подключена. Разрешение сохранено для следующих запусков."
+                    "Automatic paste connected. Permission saved for future launches."
                 } else {
-                    "Автовставка подключена, но Портал не выдал разрешение для следующих запусков."
+                    "Automatic paste connected, but the portal did not grant permission for future launches."
                 }));
             }
-            PasteEvent::Done => self.toast("Вставлено"),
+            PasteEvent::Done => self.toast("Pasted"),
             PasteEvent::Error(e) => {
                 self.set_paste_ready(false);
                 self.set_paste_error(true);
                 self.set_paste_saved(PasteService::has_saved_permission());
                 if self.has_result {
-                    self.set_status_text(String::from("Текст готов"));
+                    self.set_status_text(String::from("Text ready"));
                 }
                 self.set_settings_status(e.clone());
                 self.set_error_text(e);

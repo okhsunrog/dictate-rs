@@ -59,7 +59,7 @@ pub fn start(name: &str, command: &str, starts_instance: bool) -> Startup {
                     Startup::Resident(listener)
                 }
                 Err(e) => {
-                    eprintln!("single-instance: не удалось занять сокет {name}: {e}");
+                    eprintln!("single-instance: failed to bind socket {name}: {e}");
                     Startup::Nothing
                 }
             }

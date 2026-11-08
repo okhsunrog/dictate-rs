@@ -19,17 +19,17 @@ pub fn set_text(text: &str) -> Result<()> {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .context("Не удалось запустить wl-copy; установи wl-clipboard")?;
+        .context("Failed to start wl-copy; install wl-clipboard")?;
     child
         .stdin
         .take()
-        .context("wl-copy не принял ввод")?
+        .context("wl-copy did not accept input")?
         .write_all(text.as_bytes())?;
     // wl-copy reads stdin, then daemonizes; the foreground process returns
     // promptly once it owns the selection.
     let status = child.wait()?;
     if !status.success() {
-        bail!("wl-copy завершился с ошибкой");
+        bail!("wl-copy exited with an error");
     }
     Ok(())
 }

@@ -41,7 +41,7 @@ fn main() {
     ipc::cleanup(bridge::SOCKET);
     // QApp may return zero even when a QML import failed before initialization.
     if !bridge::initialized() {
-        eprintln!("Не удалось загрузить QML-интерфейс Dictate.");
+        eprintln!("Failed to load the Dictate QML interface.");
         std::process::exit(1);
     }
     std::process::exit(exit_code);

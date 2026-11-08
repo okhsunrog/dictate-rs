@@ -7,6 +7,6 @@ pub mod history;
 pub mod ipc;
 pub mod paste;
 pub mod proxy;
-pub use config::{Config, OutputMode};
+pub use config::{Config, OutputMode, SttProvider};
 pub use engine::{Backend, Engine, Event, Phase, Recorder};
 pub use proxy::Proxy;

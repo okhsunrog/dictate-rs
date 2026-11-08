@@ -12,7 +12,7 @@ use std::time::Instant;
 fn main() -> anyhow::Result<()> {
     let path = std::env::args()
         .nth(1)
-        .expect("укажи путь к аудиофайлу первым аргументом");
+        .expect("provide an audio file path as the first argument");
     let audio = std::fs::read(&path)?;
     let filename = std::path::Path::new(&path)
         .file_name()
