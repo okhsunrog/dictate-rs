@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Basic as Basic
 import QtQuick.Layouts
 import QtQuick.Window
 import org.kde.layershell 1.0 as LayerShell
@@ -8,25 +9,160 @@ import dictate
 QtObject {
     id: app
     property Bridge bridge: Bridge {}
+    property SystemPalette systemColors: SystemPalette { colorGroup: SystemPalette.Active }
+    readonly property bool dark: systemColors.window.hslLightness < 0.5
+    readonly property color canvas: dark ? "#19212e" : "#f3f6fa"
+    readonly property color surface: dark ? "#202b3b" : "#ffffff"
+    readonly property color hover: dark ? "#2a374a" : "#e7edf5"
+    readonly property color ink: dark ? "#e8eef8" : "#202c40"
+    readonly property color muted: dark ? "#9aaac0" : "#60718a"
+    readonly property color line: dark ? "#344258" : "#d5dfeb"
+    readonly property color accent: dark ? "#9dbfff" : "#315fbd"
+    readonly property color accentInk: dark ? "#152c52" : "#ffffff"
+    readonly property color accentSoft: dark ? "#2a3d5b" : "#e4edff"
+    readonly property color danger: dark ? "#ffb4ae" : "#af3434"
+    readonly property color dangerSoft: dark ? "#3c2b35" : "#fff0ee"
+
+    component Glyph: Canvas {
+        property string name: "mic"
+        property color tint: app.ink
+        implicitWidth: 20; implicitHeight: 20
+        onNameChanged: requestPaint()
+        onTintChanged: requestPaint()
+        onPaint: {
+            const c = getContext("2d")
+            c.reset(); c.scale(width / 24, height / 24)
+            c.strokeStyle = tint; c.lineWidth = 1.7; c.lineCap = "round"; c.lineJoin = "round"
+            c.beginPath()
+            switch (name) {
+            case "mic":
+                c.roundedRect(9, 3, 6, 11, 3, 3)
+                c.moveTo(5.5, 11); c.lineTo(5.5, 12); c.bezierCurveTo(5.5, 21, 18.5, 21, 18.5, 12); c.lineTo(18.5, 11)
+                c.moveTo(12, 19); c.lineTo(12, 22); c.moveTo(9, 22); c.lineTo(15, 22); break
+            case "settings":
+                c.moveTo(4, 7); c.lineTo(20, 7); c.moveTo(4, 17); c.lineTo(20, 17); c.stroke()
+                c.beginPath(); c.fillStyle = app.canvas; c.arc(9, 7, 3, 0, Math.PI * 2); c.fill(); c.stroke()
+                c.beginPath(); c.arc(15, 17, 3, 0, Math.PI * 2); c.fill(); break
+            case "copy": c.roundedRect(8, 8, 12, 13, 2, 2); c.moveTo(15, 4); c.lineTo(4, 4); c.lineTo(4, 16); break
+            case "back": c.moveTo(13, 5); c.lineTo(6, 12); c.lineTo(13, 19); c.moveTo(6, 12); c.lineTo(21, 12); break
+            case "close": c.moveTo(6, 6); c.lineTo(18, 18); c.moveTo(18, 6); c.lineTo(6, 18); break
+            case "stop": c.roundedRect(6, 6, 12, 12, 2, 2); break
+            case "check": c.moveTo(5, 12); c.lineTo(10, 17); c.lineTo(20, 6); break
+            case "chevron": c.moveTo(6, 9); c.lineTo(12, 15); c.lineTo(18, 9); break
+            case "more":
+                c.fillStyle = tint
+                for (let x = 5; x <= 19; x += 7) { c.moveTo(x + 1, 12); c.arc(x, 12, 1, 0, Math.PI * 2) }
+                c.fill(); break
+            }
+            c.stroke()
+        }
+    }
+    component WaveMark: Row {
+        property color tint: app.accent
+        spacing: 3
+        Repeater {
+            model: [12, 23, 32, 20, 10]
+            Rectangle { required property int modelData; width: 4; height: modelData; radius: 2; y: (32 - height) / 2; color: tint }
+        }
+        height: 32; width: 32
+    }
+    component Action: Basic.Button {
+        id: action
+        property bool primary: false
+        property bool quiet: false
+        property string glyph: ""
+        hoverEnabled: true
+        implicitHeight: 40
+        implicitWidth: Math.max(40, contentItem.implicitWidth + (text.length ? 28 : 20))
+        padding: 10
+        opacity: enabled ? 1 : 0.42
+        font.pixelSize: 13; font.weight: Font.Medium
+        background: Rectangle {
+            radius: 9
+            color: action.down ? (action.primary ? Qt.darker(app.accent, 1.15) : app.hover) : action.primary ? app.accent : action.hovered ? app.hover : action.quiet ? "transparent" : app.surface
+            border.width: action.visualFocus ? 2 : action.quiet || action.primary ? 0 : 1
+            border.color: action.visualFocus ? (action.primary ? app.ink : app.accent) : app.line
+        }
+        contentItem: Row {
+            spacing: 8
+            anchors.centerIn: parent
+            Glyph { visible: action.glyph.length > 0; name: action.glyph; tint: action.primary ? app.accentInk : app.ink; anchors.verticalCenter: parent.verticalCenter }
+            Text { visible: action.text.length > 0; text: action.text; font: action.font; color: action.primary ? app.accentInk : app.ink; anchors.verticalCenter: parent.verticalCenter }
+        }
+    }
+    component Field: Basic.TextField {
+        id: field
+        implicitHeight: 42
+        color: app.ink; placeholderTextColor: app.muted
+        selectionColor: app.accent; selectedTextColor: app.accentInk
+        font.pixelSize: 14
+        leftPadding: 12; rightPadding: 12
+        selectByMouse: true
+        background: Rectangle { radius: 8; color: app.surface; border.color: field.activeFocus ? app.accent : app.line; border.width: field.activeFocus ? 2 : 1 }
+    }
+    component Choice: Basic.ComboBox {
+        id: choice
+        implicitHeight: 42
+        leftPadding: 12; rightPadding: 36
+        font.pixelSize: 14
+        contentItem: Text { text: choice.displayText; font: choice.font; color: app.ink; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight }
+        indicator: Glyph { name: "chevron"; tint: app.muted; x: choice.width - width - 12; y: (choice.height - height) / 2 }
+        background: Rectangle { radius: 8; color: app.surface; border.color: choice.visualFocus ? app.accent : app.line; border.width: choice.visualFocus ? 2 : 1 }
+        delegate: Basic.ItemDelegate {
+            required property var modelData
+            required property int index
+            width: choice.width
+            implicitHeight: 40
+            highlighted: choice.highlightedIndex === index
+            contentItem: Text { text: modelData; color: app.ink; font: choice.font; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight }
+            background: Rectangle { color: parent.highlighted ? app.hover : app.surface; radius: 6 }
+        }
+        popup: Basic.Popup {
+            y: choice.height + 5; width: choice.width; padding: 5
+            implicitHeight: Math.min(contentItem.implicitHeight + 10, 220)
+            background: Rectangle { color: app.surface; border.color: app.line; radius: 10 }
+            contentItem: ListView { clip: true; implicitHeight: contentHeight; model: choice.popup.visible ? choice.delegateModel : null; currentIndex: choice.highlightedIndex; boundsBehavior: Flickable.StopAtBounds }
+        }
+    }
+    component Caption: Text {
+        color: app.muted; font.pixelSize: 12; wrapMode: Text.WordWrap
+    }
+    component FieldLabel: Text {
+        color: app.ink; font.pixelSize: 13; font.weight: Font.Medium
+    }
+    component Section: ColumnLayout {
+        property string title: ""
+        property string description: ""
+        spacing: 5
+        Layout.fillWidth: true
+        Layout.topMargin: 12
+        Text { text: parent.title; color: app.ink; font.pixelSize: 17; font.weight: Font.DemiBold }
+        Caption { text: parent.description; visible: text.length > 0; Layout.fillWidth: true }
+    }
+    component Rule: Rectangle { color: app.line; implicitHeight: 1; Layout.fillWidth: true }
+
     property ApplicationWindow mainWindow: ApplicationWindow {
         id: win
         property bool empty: bridge.historyJson === "[]" && bridge.phase === 0
         property bool historyOpen: false
-        width: 640; height: bridge.settingsVisible ? 640 : empty ? 320 : 560
-        minimumWidth: 420; minimumHeight: 280
+        width: 640; height: bridge.settingsVisible ? 640 : empty ? 400 : 560
+        minimumWidth: 420; minimumHeight: 320
         title: bridge.settingsVisible ? qsTr("Dictate Settings") : qsTr("Dictate")
         visible: bridge.windowVisible
-        color: palette.window
+        color: app.canvas
+        font.family: "Noto Sans"
+        palette.text: app.ink
+        palette.windowText: app.ink
+        palette.buttonText: app.ink
+        palette.highlight: app.accent
+        palette.highlightedText: app.accentInk
         onClosing: close => { close.accepted = false; bridge.teardown() }
-
         property Connections updates: Connections {
             target: bridge
             function refreshEditor() {
                 let next = bridge.showingOriginal ? bridge.originalText : bridge.editedText
                 if (editor.text !== next) {
-                    editor.syncing = true
-                    editor.text = next
-                    editor.syncing = false
+                    editor.syncing = true; editor.text = next; editor.syncing = false
                 }
             }
             function onEditedTextChanged() { refreshEditor() }
@@ -35,21 +171,26 @@ QtObject {
         }
         Shortcut { sequence: "Ctrl+Return"; enabled: !bridge.settingsVisible && editor.text.trim().length > 0; onActivated: bridge.copyAndClose() }
         Shortcut { sequence: "Escape"; onActivated: bridge.windowVisible = false }
-        header: ToolBar {
+        header: Item {
+            implicitHeight: 76
             RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 16; anchors.rightMargin: 12
-                Label { text: bridge.settingsVisible ? qsTr("Settings") : qsTr("Dictate"); font.bold: true; font.pointSize: 14; Layout.fillWidth: true }
-                ToolButton {
-                    text: bridge.settingsVisible ? qsTr("Back to text") : qsTr("Settings")
-                    icon.name: bridge.settingsVisible ? "go-previous" : "configure"
+                anchors.fill: parent; anchors.leftMargin: 28; anchors.rightMargin: 24
+                spacing: 12
+                WaveMark { Layout.alignment: Qt.AlignVCenter }
+                Text { text: "Dictate"; font.pixelSize: 19; font.weight: Font.DemiBold; color: app.ink; Layout.fillWidth: true }
+                Action {
+                    glyph: bridge.settingsVisible ? "back" : "settings"
+                    text: bridge.settingsVisible ? qsTr("Back") : qsTr("Settings")
+                    quiet: true
                     onClicked: bridge.settingsVisible = !bridge.settingsVisible
                 }
-                ToolButton {
-                    text: qsTr("More"); icon.name: "application-menu"
+                Action {
+                    glyph: "more"; quiet: true
+                    Accessible.name: qsTr("More options")
                     onClicked: appMenu.popup()
-                    Menu {
+                    Basic.Menu {
                         id: appMenu
+                        palette.window: app.surface; palette.text: app.ink; palette.highlight: app.hover; palette.highlightedText: app.ink
                         MenuItem { text: qsTr("History"); enabled: JSON.parse(bridge.historyJson).length > 1; checkable: true; checked: win.historyOpen; onTriggered: win.historyOpen = !win.historyOpen }
                         MenuItem { text: qsTr("Original transcript"); enabled: bridge.originalText.length > 0; checkable: true; checked: bridge.showingOriginal; onTriggered: bridge.toggleOriginal() }
                         MenuItem { text: bridge.originalText.length ? qsTr("Retry editing") : qsTr("Retry transcription"); enabled: bridge.canRetry && bridge.phase === 0; onTriggered: bridge.retry() }
@@ -60,134 +201,189 @@ QtObject {
             }
         }
         StackLayout {
-            anchors.fill: parent; anchors.margins: 20
+            anchors.fill: parent
             currentIndex: bridge.settingsVisible ? 1 : 0
-            ColumnLayout {
-                spacing: 12
-                ComboBox {
+            Item {
+              ColumnLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 28; anchors.rightMargin: 28; anchors.bottomMargin: 24
+                spacing: 16
+                Choice {
                     Layout.fillWidth: true
                     model: JSON.parse(bridge.historyJson)
                     currentIndex: bridge.historyIndex
                     visible: win.historyOpen && count > 1
                     enabled: bridge.phase === 0
                     onActivated: bridge.selectSession(currentIndex)
-                    Accessible.name: qsTr("Recent dictations, in memory only")
+                    Accessible.name: qsTr("Recent dictations")
                 }
-                RowLayout {
-                    visible: !win.empty
-                    Layout.fillWidth: true
-                    BusyIndicator { running: bridge.phase > 1; visible: running; implicitWidth: 24; implicitHeight: 24 }
-                    Label { text: bridge.statusText; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                    ToolButton { text: qsTr("Stop"); visible: bridge.phase > 1; onClicked: bridge.cancel() }
-                }
-                Frame {
+                Rectangle {
                     visible: bridge.errorText.length > 0
                     Layout.fillWidth: true
+                    implicitHeight: errorContent.implicitHeight + 28
+                    radius: 10; color: app.dangerSoft
                     ColumnLayout {
-                        anchors.fill: parent
-                        Label { text: bridge.errorText; wrapMode: Text.WordWrap; Layout.fillWidth: true; Accessible.role: Accessible.AlertMessage }
+                        id: errorContent
+                        anchors.fill: parent; anchors.margins: 14; spacing: 8
+                        Text { text: bridge.errorText; color: app.danger; font.pixelSize: 13; wrapMode: Text.WordWrap; Layout.fillWidth: true; Accessible.role: Accessible.AlertMessage }
                         Flow {
                             Layout.fillWidth: true; spacing: 8
-                            Button { text: qsTr("Retry"); visible: !bridge.pasteError; enabled: bridge.canRetry && bridge.phase === 0; onClicked: bridge.retry() }
-                            Button { text: qsTr("Configure connection"); onClicked: bridge.settingsVisible = true }
+                            Action { text: qsTr("Retry"); quiet: true; visible: !bridge.pasteError; enabled: bridge.canRetry && bridge.phase === 0; onClicked: bridge.retry() }
+                            Action { text: qsTr("Open settings"); quiet: true; onClicked: bridge.settingsVisible = true }
                         }
                     }
                 }
                 ColumnLayout {
                     visible: win.empty
-                    Layout.fillWidth: true; Layout.fillHeight: true
                     spacing: 16
-                    Item { Layout.fillHeight: true }
-                    Label { text: qsTr("Turn speech into text"); font.pointSize: 18; font.bold: true; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter }
-                    Label { text: qsTr("Record, review and copy."); Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter }
-                    Button { text: qsTr("Start recording"); highlighted: true; Layout.alignment: Qt.AlignHCenter; onClicked: bridge.toggle() }
-                    Item { Layout.fillHeight: true }
-                }
-                Label { visible: bridge.showingOriginal; text: qsTr("Original transcript · read-only") }
-                ScrollView {
-                    visible: !win.empty
                     Layout.fillWidth: true; Layout.fillHeight: true
-                    clip: true
-                    TextArea {
-                        id: editor
-                        property bool syncing: false
-                        readOnly: bridge.showingOriginal || bridge.historyJson === "[]"
-                        wrapMode: TextArea.Wrap
-                        padding: 16
-                        selectByMouse: true
-                        font.pointSize: 12
-                        placeholderText: bridge.phase > 1 ? qsTr("Transcribing recording…") : qsTr("Dictation text")
-                        onTextChanged: if (!syncing && !bridge.showingOriginal) bridge.editDraft(text)
-                        Accessible.name: bridge.showingOriginal ? qsTr("Original transcript") : qsTr("Dictation text")
+                    Item { Layout.fillHeight: true }
+                    Rectangle {
+                        width: 60; height: 60; radius: 18; color: app.accentSoft
+                        Glyph { name: "mic"; tint: app.accent; width: 28; height: 28; anchors.centerIn: parent }
                     }
+                    Text { text: qsTr("Ready when you are."); color: app.ink; font.pixelSize: win.width < 480 ? 27 : 32; font.weight: Font.DemiBold; font.letterSpacing: -0.7; Layout.fillWidth: true }
+                    Text { text: qsTr("Start a recording, then review and copy your text."); color: app.muted; font.pixelSize: 14; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    Action { text: qsTr("Start recording"); glyph: "mic"; primary: true; Layout.topMargin: 8; onClicked: bridge.toggle() }
+                    Item { Layout.fillHeight: true }
+                    Caption { text: qsTr("Your drafts stay here until you close the app."); Layout.fillWidth: true }
                 }
-                RowLayout {
+                ColumnLayout {
                     visible: !win.empty
-                    Layout.fillWidth: true; spacing: 8
-                    Button { text: qsTr("Copy"); highlighted: true; enabled: editor.text.trim().length > 0; onClicked: bridge.copyCurrent() }
-                    Button { text: bridge.phase === 1 ? qsTr("Finish") : qsTr("New recording"); enabled: bridge.phase <= 1; onClicked: bridge.toggle() }
-                    Item { Layout.fillWidth: true }
+                    Layout.fillWidth: true; Layout.fillHeight: true; spacing: 12
+                    RowLayout {
+                        Layout.fillWidth: true; spacing: 6
+                        Action {
+                            text: qsTr("Edited"); quiet: bridge.showingOriginal
+                            enabled: bridge.originalText.length > 0
+                            onClicked: if (bridge.showingOriginal) bridge.toggleOriginal()
+                        }
+                        Action {
+                            text: qsTr("Original"); quiet: !bridge.showingOriginal
+                            enabled: bridge.originalText.length > 0
+                            onClicked: if (!bridge.showingOriginal) bridge.toggleOriginal()
+                        }
+                        Item { Layout.fillWidth: true }
+                        Caption { text: bridge.showingOriginal ? qsTr("Read-only") : bridge.phase > 1 ? qsTr("Processing…") : qsTr("Editable") }
+                    }
+                    Rectangle {
+                        Layout.fillWidth: true; Layout.fillHeight: true
+                        color: app.surface; radius: 12; border.color: editor.activeFocus ? app.accent : app.line
+                        ScrollView {
+                            id: textScroll
+                            anchors.fill: parent; anchors.margins: 1
+                            clip: true
+                            TextArea {
+                                id: editor
+                                property bool syncing: false
+                                readOnly: bridge.showingOriginal || bridge.historyJson === "[]"
+                                wrapMode: TextArea.Wrap
+                                padding: 20
+                                selectByMouse: true
+                                color: app.ink; placeholderTextColor: app.muted
+                                selectionColor: app.accent; selectedTextColor: app.accentInk
+                                font.pixelSize: 16
+                                background: null
+                                placeholderText: bridge.phase > 1 ? qsTr("Your words are on their way…") : qsTr("Dictation text")
+                                onTextChanged: if (!syncing && !bridge.showingOriginal) bridge.editDraft(text)
+                                Accessible.name: bridge.showingOriginal ? qsTr("Original transcript") : qsTr("Dictation text")
+                            }
+                        }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true; spacing: 8
+                        Rectangle { width: 6; height: 6; radius: 3; color: bridge.phase > 1 ? app.accent : app.muted }
+                        Caption { text: bridge.statusText; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                        Action { text: qsTr("Cancel"); quiet: true; visible: bridge.phase > 1; onClicked: bridge.cancel() }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true; spacing: 8
+                        Action { text: qsTr("Copy text"); glyph: "copy"; primary: true; enabled: editor.text.trim().length > 0; onClicked: bridge.copyCurrent() }
+                        Action { text: bridge.phase === 1 ? qsTr("Finish") : qsTr("New recording"); glyph: "mic"; enabled: bridge.phase <= 1; onClicked: bridge.toggle() }
+                        Item { Layout.fillWidth: true }
+                        Caption { text: "Ctrl ↵"; visible: win.width > 500 }
+                    }
                 }
             }
-            ScrollView {
-                clip: true
-                contentWidth: availableWidth
-                ColumnLayout {
-                    width: parent.width; spacing: 10
-                    Label { text: qsTr("Transcription"); font.bold: true }
-                    ComboBox {
-                        Layout.fillWidth: true
-                        model: [qsTr("ChatGPT proxy"), qsTr("ElevenLabs · Scribe v2")]
-                        currentIndex: bridge.cfgSttProvider
-                        onActivated: bridge.cfgSttProvider = currentIndex
-                        Accessible.name: qsTr("Transcription provider")
+            }
+            ColumnLayout {
+                spacing: 0
+                ScrollView {
+                    Layout.fillWidth: true; Layout.fillHeight: true
+                    clip: true; contentWidth: availableWidth
+                    ColumnLayout {
+                        width: parent.width; spacing: 12
+                        Item { implicitHeight: 0 }
+                        ColumnLayout {
+                            Layout.fillWidth: true; Layout.leftMargin: 28; Layout.rightMargin: 28
+                            spacing: 10
+                            Text { text: qsTr("Settings"); color: app.ink; font.pixelSize: 28; font.weight: Font.DemiBold; font.letterSpacing: -0.5 }
+                            Caption { text: qsTr("Choose how your voice becomes text."); Layout.fillWidth: true }
+                            Section { title: qsTr("Transcription"); description: qsTr("The service that turns your recording into words.") }
+                            Choice {
+                                Layout.fillWidth: true
+                                model: [qsTr("ChatGPT proxy"), qsTr("ElevenLabs · Scribe v2")]
+                                currentIndex: bridge.cfgSttProvider
+                                onActivated: bridge.cfgSttProvider = currentIndex
+                                Accessible.name: qsTr("Transcription provider")
+                            }
+                            FieldLabel { visible: bridge.cfgSttProvider === 1; text: qsTr("ElevenLabs API key") }
+                            Field { visible: bridge.cfgSttProvider === 1; Layout.fillWidth: true; echoMode: TextInput.Password; text: bridge.cfgElevenlabsApiKey; onTextEdited: bridge.cfgElevenlabsApiKey = text; Accessible.name: qsTr("ElevenLabs API key") }
+                            Caption { visible: bridge.cfgSttProvider === 1; text: qsTr("You can also provide the key through ELEVENLABS_API_KEY."); Layout.fillWidth: true }
+                            Rule { Layout.topMargin: 12 }
+                            Section { title: qsTr("Text editing"); description: bridge.cfgSttProvider === 0 ? qsTr("This service handles both transcription and editing.") : qsTr("Refine punctuation and apply your spoken corrections.") }
+                            FieldLabel { text: qsTr("Service URL") }
+                            Field { Layout.fillWidth: true; text: bridge.cfgBaseUrl; placeholderText: "https://proxy.example.com/v1"; onTextEdited: bridge.cfgBaseUrl = text; Accessible.name: qsTr("Service URL") }
+                            FieldLabel { text: qsTr("API key") }
+                            Field { Layout.fillWidth: true; echoMode: TextInput.Password; text: bridge.cfgApiKey; onTextEdited: bridge.cfgApiKey = text; Accessible.name: qsTr("API key") }
+                            FieldLabel { text: qsTr("Editing model") }
+                            Field { Layout.fillWidth: true; text: bridge.cfgModel; placeholderText: qsTr("Model name"); onTextEdited: bridge.cfgModel = text; Accessible.name: qsTr("Editing model") }
+                            Caption { text: qsTr("Keys entered here are saved on this device. Environment keys take precedence."); Layout.fillWidth: true }
+                            Rule { Layout.topMargin: 12 }
+                            Section { title: qsTr("Recording"); description: qsTr("Leave these empty to use automatic language detection and your default microphone.") }
+                            FieldLabel { text: qsTr("Language") }
+                            Field { Layout.fillWidth: true; text: bridge.cfgLanguage; placeholderText: qsTr("Automatic"); onTextEdited: bridge.cfgLanguage = text; Accessible.name: qsTr("Language") }
+                            FieldLabel { text: qsTr("PipeWire microphone") }
+                            Field { Layout.fillWidth: true; text: bridge.cfgMicrophone; placeholderText: qsTr("System default"); onTextEdited: bridge.cfgMicrophone = text; Accessible.name: qsTr("PipeWire microphone") }
+                            Rule { Layout.topMargin: 12 }
+                            Section { title: qsTr("Automatic paste"); description: qsTr("Insert the result into the focused application.") }
+                            Caption {
+                                text: bridge.pasteError ? qsTr("Connection failed. You can still copy text manually.") : bridge.pasteReady ? qsTr("Connected and ready to paste.") : bridge.pasteSaved ? qsTr("Permission saved. Reconnect to check access.") : qsTr("Allow access through your desktop's permission dialog.")
+                                Layout.fillWidth: true
+                            }
+                            Action { text: bridge.pasteReady ? qsTr("Connected") : bridge.pasteSaved ? qsTr("Check connection") : qsTr("Connect automatic paste"); glyph: bridge.pasteReady ? "check" : ""; enabled: !bridge.pasteReady; onClicked: bridge.connectPaste() }
+                            Basic.CheckBox {
+                                id: terminalCheck
+                                text: qsTr("Use Ctrl+Shift+V for terminals")
+                                checked: bridge.cfgPasteShift; onToggled: bridge.cfgPasteShift = checked
+                                spacing: 10
+                                indicator: Rectangle {
+                                    implicitWidth: 20; implicitHeight: 20; y: (terminalCheck.height - height) / 2
+                                    radius: 5; color: terminalCheck.checked ? app.accent : app.surface
+                                    border.color: terminalCheck.visualFocus ? app.accent : app.line
+                                    Glyph { anchors.centerIn: parent; width: 15; height: 15; name: "check"; tint: app.accentInk; visible: terminalCheck.checked }
+                                }
+                                contentItem: Text { text: terminalCheck.text; color: app.ink; font.pixelSize: 13; leftPadding: terminalCheck.indicator.width + terminalCheck.spacing; verticalAlignment: Text.AlignVCenter }
+                            }
+                            Item { implicitHeight: 16 }
+                        }
                     }
-                    Label { visible: bridge.cfgSttProvider === 1; text: qsTr("ElevenLabs API key") }
-                    TextField {
-                        visible: bridge.cfgSttProvider === 1
-                        Layout.fillWidth: true
-                        echoMode: TextInput.Password
-                        text: bridge.cfgElevenlabsApiKey
-                        onTextEdited: bridge.cfgElevenlabsApiKey = text
-                        Accessible.name: qsTr("ElevenLabs API key")
-                    }
-                    Label {
-                        visible: bridge.cfgSttProvider === 1
-                        text: qsTr("ELEVENLABS_API_KEY overrides the saved key. A key entered here is stored locally with mode 0600.")
-                        wrapMode: Text.WordWrap; Layout.fillWidth: true; opacity: 0.7
-                    }
-                    Label { text: qsTr("Editing"); font.bold: true }
-                    Label { visible: bridge.cfgSttProvider === 0; text: qsTr("This service also handles transcription."); wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                    Label { text: qsTr("Service URL (including /v1)") }
-                    TextField { Layout.fillWidth: true; text: bridge.cfgBaseUrl; onTextEdited: bridge.cfgBaseUrl = text; Accessible.name: qsTr("Service URL") }
-                    Label { text: qsTr("API key") }
-                    TextField { Layout.fillWidth: true; echoMode: TextInput.Password; text: bridge.cfgApiKey; onTextEdited: bridge.cfgApiKey = text; Accessible.name: qsTr("API key") }
-                    Label { text: qsTr("DICTATE_API_KEY overrides the saved key. A key entered here is stored locally with mode 0600."); wrapMode: Text.WordWrap; Layout.fillWidth: true; opacity: 0.7 }
-                    Label { text: qsTr("Automatic paste"); font.bold: true }
-                    Label { text: qsTr("Text is pasted into the application focused when processing finishes."); wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                    CheckBox { text: qsTr("Terminal compatibility"); checked: bridge.cfgPasteShift; onToggled: bridge.cfgPasteShift = checked }
-                    Label { text: bridge.pasteError ? qsTr("Failed to connect automatic paste. See details below.") : bridge.pasteReady ? (bridge.pasteSaved ? qsTr("Automatic paste connected. Permission saved.") : qsTr("Connected for this session. The portal did not allow access to be saved.")) : bridge.pasteSaved ? qsTr("Permission saved. The connection will be restored when pasting.") : qsTr("Allow automatic paste once for future launches."); wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                    Button { text: bridge.pasteReady ? qsTr("Automatic paste connected") : bridge.pasteSaved ? qsTr("Check connection") : qsTr("Connect automatic paste"); enabled: !bridge.pasteReady; onClicked: bridge.connectPaste() }
-                    Label { text: qsTr("Advanced settings"); font.bold: true }
-                    Label { text: qsTr("Language (empty for automatic detection)") }
-                    TextField { Layout.fillWidth: true; text: bridge.cfgLanguage; placeholderText: "ru, en"; onTextEdited: bridge.cfgLanguage = text }
-                    Label { text: qsTr("Editing model") }
-                    TextField { Layout.fillWidth: true; text: bridge.cfgModel; onTextEdited: bridge.cfgModel = text }
-                    Label { text: qsTr("PipeWire microphone (empty for default)") }
-                    TextField { Layout.fillWidth: true; text: bridge.cfgMicrophone; onTextEdited: bridge.cfgMicrophone = text }
-                    Button { text: qsTr("Save settings"); enabled: bridge.phase === 0; onClicked: bridge.saveSettings() }
-                    Label { text: bridge.settingsStatus; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                    Button { text: qsTr("Resume processing"); visible: bridge.canRetry; enabled: bridge.phase === 0; onClicked: bridge.retry() }
-                    Label { text: qsTr("The last 10 drafts are kept until exit. Audio is retained for retry until the next recording."); wrapMode: Text.WordWrap; Layout.fillWidth: true; opacity: 0.7 }
+                }
+                Rule {}
+                RowLayout {
+                    Layout.fillWidth: true; Layout.margins: 20; spacing: 12
+                    Caption { text: bridge.settingsStatus; Layout.fillWidth: true }
+                    Action { text: qsTr("Resume"); visible: bridge.canRetry; enabled: bridge.phase === 0; onClicked: bridge.retry() }
+                    Action { text: qsTr("Save settings"); primary: true; enabled: bridge.phase === 0; onClicked: bridge.saveSettings() }
                 }
             }
         }
     }
     property Window osd: Window {
         id: osdWin
-        width: 440; height: osdContent.implicitHeight + 28
+        width: 400; height: osdContent.implicitHeight + 36
         visible: bridge.osdVisible
-        color: palette.window
+        color: "transparent"
         flags: Qt.FramelessWindowHint
         LayerShell.Window.anchors: LayerShell.Window.AnchorBottom
         LayerShell.Window.layer: LayerShell.Window.LayerOverlay
@@ -195,20 +391,41 @@ QtObject {
         LayerShell.Window.exclusionZone: 0
         LayerShell.Window.wantsToBeOnActiveScreen: true
         LayerShell.Window.scope: "dictate"
-        ColumnLayout {
-            id: osdContent
-            anchors.fill: parent; anchors.margins: 14; spacing: 8
-            RowLayout {
-                Label { text: bridge.phase === 1 ? "●" : "✓"; color: bridge.phase === 1 ? "#da4453" : palette.text; font.pointSize: 15 }
-                Label {
-                    text: bridge.phase === 1 ? qsTr("Recording · %1:%2").arg(Math.floor(bridge.seconds / 60)).arg(("0" + bridge.seconds % 60).slice(-2)) : bridge.errorText.length ? qsTr("Failed to start recording") : bridge.statusText
-                    Layout.fillWidth: true; wrapMode: Text.WordWrap
+        Rectangle {
+            anchors.fill: parent; anchors.margins: 6
+            color: app.surface; radius: 18; border.color: app.line
+            ColumnLayout {
+                id: osdContent
+                anchors.fill: parent; anchors.margins: 12; spacing: 8
+                RowLayout {
+                    spacing: 12
+                    Rectangle {
+                        width: 34; height: 34; radius: 11; color: bridge.phase === 1 ? app.dangerSoft : app.accentSoft
+                        Glyph { anchors.centerIn: parent; name: bridge.phase === 1 ? "mic" : "check"; tint: bridge.phase === 1 ? app.danger : app.accent }
+                    }
+                    ColumnLayout {
+                        spacing: 2; Layout.fillWidth: true
+                        Text { text: bridge.phase === 1 ? qsTr("Recording") : bridge.errorText.length ? qsTr("Recording failed") : bridge.statusText; color: app.ink; font.pixelSize: 13; font.weight: Font.Medium; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                        Caption { visible: bridge.phase === 1; text: "%1:%2".arg(Math.floor(bridge.seconds / 60)).arg(("0" + bridge.seconds % 60).slice(-2)) }
+                    }
+                    Action { glyph: "stop"; primary: true; visible: bridge.phase === 1; Accessible.name: qsTr("Finish recording"); onClicked: bridge.toggle() }
+                    Action { glyph: "close"; quiet: true; Accessible.name: bridge.phase === 0 ? qsTr("Close") : qsTr("Cancel"); onClicked: { if (bridge.phase === 0) bridge.osdVisible = false; else bridge.cancel() } }
                 }
-                Button { text: qsTr("Finish"); visible: bridge.phase === 1; onClicked: bridge.toggle() }
-                ToolButton { text: bridge.phase === 0 ? qsTr("Close") : qsTr("Cancel"); onClicked: { if (bridge.phase === 0) bridge.osdVisible = false; else bridge.cancel() } }
+                Row {
+                    visible: bridge.phase === 1
+                    spacing: 3
+                    Layout.fillWidth: true
+                    Repeater {
+                        model: 36
+                        Rectangle {
+                            required property int index
+                            width: (osdContent.width - 35 * 3) / 36; height: 3; radius: 1.5
+                            color: index / 36 < bridge.level ? app.accent : app.line
+                        }
+                    }
+                }
+                Caption { visible: bridge.errorText.length > 0; text: bridge.errorText; color: app.danger; Layout.fillWidth: true }
             }
-            ProgressBar { visible: bridge.phase === 1; Layout.fillWidth: true; value: bridge.level }
-            Label { visible: bridge.errorText.length > 0; text: bridge.errorText; wrapMode: Text.WordWrap; Layout.fillWidth: true }
         }
         Timer { interval: 1800; running: bridge.osdVisible && bridge.phase === 0 && bridge.errorText.length === 0; onTriggered: bridge.osdVisible = false }
     }
