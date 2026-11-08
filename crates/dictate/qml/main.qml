@@ -81,11 +81,19 @@ QtObject {
                 c.beginPath(); c.fillStyle = app.canvas; c.arc(9, 7, 3, 0, Math.PI * 2); c.fill(); c.stroke()
                 c.beginPath(); c.arc(15, 17, 3, 0, Math.PI * 2); c.fill(); break
             case "expand":
-                c.moveTo(4, 10); c.lineTo(4, 4); c.lineTo(10, 4)
-                c.moveTo(14, 4); c.lineTo(20, 4); c.lineTo(20, 10)
-                c.moveTo(20, 14); c.lineTo(20, 20); c.lineTo(14, 20)
-                c.moveTo(10, 20); c.lineTo(4, 20); c.lineTo(4, 14); break
-            case "compact": c.roundedRect(3, 10, 18, 8, 3, 3); break
+                c.moveTo(12, 4); c.lineTo(5, 4); c.quadraticCurveTo(3, 4, 3, 6)
+                c.lineTo(3, 19); c.quadraticCurveTo(3, 21, 5, 21)
+                c.lineTo(18, 21); c.quadraticCurveTo(20, 21, 20, 19); c.lineTo(20, 12)
+                c.moveTo(11, 13); c.lineTo(21, 3)
+                c.moveTo(15, 3); c.lineTo(21, 3); c.lineTo(21, 9); break
+            case "compact":
+                c.moveTo(8, 15); c.lineTo(5, 15); c.quadraticCurveTo(3, 15, 3, 13)
+                c.lineTo(3, 5); c.quadraticCurveTo(3, 3, 5, 3)
+                c.lineTo(19, 3); c.quadraticCurveTo(21, 3, 21, 5)
+                c.lineTo(21, 13); c.quadraticCurveTo(21, 15, 19, 15); c.lineTo(16, 15)
+                c.moveTo(12, 7); c.lineTo(12, 18)
+                c.moveTo(9, 15); c.lineTo(12, 18); c.lineTo(15, 15)
+                c.moveTo(6, 21); c.lineTo(18, 21); break
             case "copy": c.roundedRect(8, 8, 12, 13, 2, 2); c.moveTo(15, 4); c.lineTo(4, 4); c.lineTo(4, 16); break
             case "back": c.moveTo(13, 5); c.lineTo(6, 12); c.lineTo(13, 19); c.moveTo(6, 12); c.lineTo(21, 12); break
             case "close": c.moveTo(6, 6); c.lineTo(18, 18); c.moveTo(18, 6); c.lineTo(6, 18); break
@@ -275,7 +283,7 @@ QtObject {
                 Action {
                     glyph: "compact"; quiet: true
                     visible: !bridge.settingsVisible
-                    Accessible.name: qsTr("Compact bar (Ctrl+M)")
+                    Accessible.name: qsTr("Return to bar (Ctrl+M)")
                     onClicked: bridge.showCompact()
                 }
                 Action {
@@ -579,7 +587,7 @@ QtObject {
                     Action { text: qsTr("Finish"); glyph: "stop"; primary: true; visible: bridge.phase === 1; onClicked: bridge.toggle() }
                     Action { text: qsTr("Record"); glyph: "mic"; primary: true; visible: bridge.phase === 0 && !bridge.hasResult && bridge.errorText.length === 0; onClicked: bridge.toggle() }
                     Action { text: qsTr("Copy & close"); glyph: "copy"; primary: true; visible: bridge.phase === 0 && bridge.hasResult; onClicked: bridge.copyAndClose() }
-                    Action { glyph: "expand"; quiet: true; Accessible.name: qsTr("Open full editor"); onClicked: bridge.expand() }
+                    Action { glyph: "expand"; quiet: true; Accessible.name: qsTr("Open editor"); onClicked: bridge.expand() }
                     Action { glyph: "close"; quiet: true; Accessible.name: bridge.phase === 0 ? qsTr("Hide bar") : qsTr("Cancel"); onClicked: bridge.hide() }
                 }
                 Row {
