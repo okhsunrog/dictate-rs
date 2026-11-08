@@ -23,6 +23,14 @@ impl OutputMode {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Presentation {
+    #[default]
+    Overlay,
+    Window,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -31,6 +39,7 @@ pub struct Config {
     pub model: String,
     pub language: String,
     pub output: OutputMode,
+    pub presentation: Presentation,
     pub paste_shift: bool,
     pub microphone: String,
     pub stt_provider: SttProvider,
@@ -52,6 +61,7 @@ impl Default for Config {
             model: String::new(),
             language: String::new(),
             output: OutputMode::Preview,
+            presentation: Presentation::Overlay,
             paste_shift: false,
             microphone: String::new(),
             stt_provider: SttProvider::default(),

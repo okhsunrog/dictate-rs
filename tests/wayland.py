@@ -64,7 +64,9 @@ while running:
         return log_path.read_text(errors="replace")
 
     with log_path.open("w") as log:
-        process = subprocess.Popen([binary], env=env, stdout=log, stderr=log)
+        process = subprocess.Popen(
+            [binary, "--window", "--review"], env=env, stdout=log, stderr=log
+        )
         try:
             wait_for(
                 lambda: "set_keyboard_interactivity(0)" in trace(),

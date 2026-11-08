@@ -4,7 +4,7 @@
 //! notifications are updated on the Qt thread. Toolkit types stay out of the core.
 
 use dictate_core::{
-    Config, Engine, Event, OutputMode, Phase, SttProvider, clipboard, ipc,
+    Config, Engine, Event, OutputMode, Phase, Presentation, SttProvider, clipboard, ipc,
     paste::{PasteEvent, PasteService},
 };
 use qtbridge::{QmlObject, qobject};
@@ -62,6 +62,7 @@ pub struct Bridge {
     cfg_microphone: String,
     microphones_json: String,
     cfg_output: i32,
+    cfg_presentation: i32,
     cfg_paste_shift: bool,
     settings_status: String,
     can_retry: bool,
@@ -76,6 +77,8 @@ pub struct Bridge {
     initialized: bool,
     config: Config,
     delivery: OutputMode,
+    presentation: Presentation,
+    override_presentation: Option<Presentation>,
     /// One-shot output-mode override for the next recording (from a
     /// `toggle <mode>` invocation); cleared when recording starts.
     override_mode: Option<OutputMode>,
@@ -112,6 +115,7 @@ impl Default for Bridge {
                 r#"{"devices":[{"name":"","label":"System default"}],"error":""}"#,
             ),
             cfg_output: 0,
+            cfg_presentation: 0,
             cfg_paste_shift: false,
             settings_status: String::default(),
             can_retry: false,
@@ -125,6 +129,8 @@ impl Default for Bridge {
             initialized: false,
             config: Config::default(),
             delivery: OutputMode::Preview,
+            presentation: Presentation::Overlay,
+            override_presentation: None,
             override_mode: None,
             engine: None,
             paste: None,
@@ -195,6 +201,7 @@ notifying_setters! {
     cfg_microphone: String => set_cfg_microphone, cfg_microphone_changed;
     microphones_json: String => set_microphones_json, microphones_json_changed;
     cfg_output: i32 => set_cfg_output, cfg_output_changed;
+    cfg_presentation: i32 => set_cfg_presentation, cfg_presentation_changed;
     cfg_paste_shift: bool => set_cfg_paste_shift, cfg_paste_shift_changed;
     settings_status: String => set_settings_status, settings_status_changed;
     can_retry: bool => set_can_retry, can_retry_changed;
@@ -403,6 +410,14 @@ impl Bridge {
     fn cfg_output_changed(&mut self);
 
     qproperty!(
+        "cfgPresentation",
+        Member = cfg_presentation,
+        Notify = cfg_presentation_changed
+    );
+    #[qsignal]
+    fn cfg_presentation_changed(&mut self);
+
+    qproperty!(
         "cfgPasteShift",
         Member = cfg_paste_shift,
         Notify = cfg_paste_shift_changed
@@ -484,6 +499,11 @@ impl Bridge {
         self.set_cfg_language(String::from(&config.language));
         self.set_cfg_microphone(String::from(&config.microphone));
         self.set_cfg_output(output_to_i32(config.output));
+        self.set_cfg_presentation(if config.presentation == Presentation::Window {
+            1
+        } else {
+            0
+        });
         self.set_cfg_paste_shift(config.paste_shift);
         if let Some(e) = &error {
             self.set_status_text(String::from(e));
@@ -520,30 +540,89 @@ impl Bridge {
         INITIALIZED.store(true, Ordering::Relaxed);
     }
 
-    /// Route a forwarded command to the matching action. `toggle` may carry a
-    /// one-shot output-mode override, e.g. "toggle clipboard".
+    /// Launch overrides are consumed only at the start of a recording.
     pub fn dispatch(&mut self, command: &str) {
         let mut parts = command.split_whitespace();
         match parts.next() {
             Some("toggle") => {
-                let over = parts.next().and_then(OutputMode::from_cli);
                 if self.phase == PHASE_IDLE {
-                    self.override_mode = over;
+                    for option in parts {
+                        match option {
+                            "overlay" => self.override_presentation = Some(Presentation::Overlay),
+                            "window" => self.override_presentation = Some(Presentation::Window),
+                            mode => self.override_mode = OutputMode::from_cli(mode),
+                        }
+                    }
                 }
                 self.toggle();
             }
+            Some("finish") => {
+                if self.phase == 1 {
+                    self.toggle();
+                }
+            }
+            Some("copy") => {
+                if self.phase == PHASE_IDLE {
+                    self.copy_and_close();
+                }
+            }
+            Some("hide") => self.hide(),
             Some("cancel") => self.cancel(),
             Some("retry") => self.retry(),
             Some("quit") => self.teardown(),
-            Some("settings") => {
-                self.set_settings_visible(true);
-                self.present();
-            }
-            _ => {
-                self.set_settings_visible(false);
-                self.present();
-            }
+            Some("settings") => self.open_settings(),
+            Some("compact") => self.show_compact(),
+            Some("show") => self.expand(),
+            _ => {}
         }
+    }
+
+    fn show_session(&mut self) {
+        if self.presentation == Presentation::Overlay {
+            self.set_window_visible(false);
+            self.set_osd_visible(true);
+        } else {
+            self.set_osd_visible(false);
+            self.set_window_visible(true);
+        }
+    }
+
+    #[qslot]
+    pub fn show_compact(&mut self) {
+        self.presentation = Presentation::Overlay;
+        self.set_settings_visible(false);
+        self.show_session();
+    }
+
+    #[qslot]
+    pub fn expand(&mut self) {
+        // Explicit inspection takes precedence over automatic delivery.
+        self.delivery = OutputMode::Preview;
+        self.presentation = Presentation::Window;
+        self.set_settings_visible(false);
+        self.show_session();
+    }
+
+    #[qslot]
+    pub fn open_settings(&mut self) {
+        self.set_osd_visible(false);
+        self.set_settings_visible(true);
+        self.set_window_visible(true);
+    }
+
+    #[qslot]
+    pub fn back_from_settings(&mut self) {
+        self.set_settings_visible(false);
+        self.show_session();
+    }
+
+    #[qslot]
+    pub fn hide(&mut self) {
+        if self.phase != PHASE_IDLE {
+            self.cancel();
+        }
+        self.set_window_visible(false);
+        self.set_osd_visible(false);
     }
 
     #[qslot]
@@ -552,7 +631,13 @@ impl Bridge {
             // A `toggle <mode>` invocation overrides the saved output for this
             // recording only.
             let over = self.override_mode.take();
-            self.delivery = over.unwrap_or(OutputMode::Preview);
+            self.delivery = over.unwrap_or(self.config.output);
+            self.presentation = self
+                .override_presentation
+                .take()
+                .unwrap_or(self.config.presentation);
+            self.set_settings_visible(false);
+            self.ignoring_results = false;
             // Hide the main window (global shortcut preserves the focused app)
             // and show the OSD immediately so a window is on screen at startup.
             self.set_window_visible(false);
@@ -572,6 +657,8 @@ impl Bridge {
             engine.cancel();
         }
         self.set_error_text(String::default());
+        self.set_osd_visible(false);
+        self.set_window_visible(false);
     }
 
     #[qslot]
@@ -581,7 +668,8 @@ impl Bridge {
         }
         self.set_error_text(String::default());
         self.set_settings_visible(false);
-        self.set_window_visible(true);
+        self.ignoring_results = false;
+        self.show_session();
         self.delivery = OutputMode::Preview;
         let config = self.config.clone();
         if let Some(engine) = self.engine.as_ref() {
@@ -642,16 +730,17 @@ impl Bridge {
     }
     #[qslot]
     pub fn copy_and_close(&mut self) {
+        if self.phase != PHASE_IDLE {
+            return;
+        }
         if self.copy() {
             self.set_window_visible(false);
+            self.set_osd_visible(false);
         }
     }
     fn toast(&mut self, text: &str) {
         self.set_error_text(String::default());
         self.set_status_text(String::from(text));
-        if self.phase == PHASE_IDLE {
-            self.set_osd_visible(true);
-        }
     }
 
     #[qslot]
@@ -724,6 +813,11 @@ impl Bridge {
             language: self.cfg_language.trim().to_owned(),
             microphone: self.cfg_microphone.trim().to_owned(),
             output: i32_to_output(self.cfg_output),
+            presentation: if self.cfg_presentation == 1 {
+                Presentation::Window
+            } else {
+                Presentation::Overlay
+            },
             paste_shift: self.cfg_paste_shift,
         };
         match candidate.save() {
@@ -748,11 +842,6 @@ impl Bridge {
         if let Some(paste) = self.paste.as_ref() {
             paste.connect();
         }
-    }
-
-    #[qslot]
-    pub fn present(&mut self) {
-        self.set_window_visible(true);
     }
 
     #[qslot]
@@ -782,8 +871,14 @@ impl Bridge {
         match event {
             Event::Phase(phase) => {
                 self.set_phase(phase_code(phase));
-                let silent = self.delivery != OutputMode::Preview;
-                self.set_osd_visible(phase == Phase::Recording || (silent && phase != Phase::Idle));
+                // Idle must preserve the result/error bar until an explicit action.
+                if phase != Phase::Idle && !self.settings_visible {
+                    if phase == Phase::Recording {
+                        self.set_osd_visible(true);
+                    } else {
+                        self.show_session();
+                    }
+                }
                 match phase {
                     Phase::Recording => {
                         self.history.begin();
@@ -810,9 +905,7 @@ impl Bridge {
                 self.audio_available = true;
                 self.refresh_draft();
                 self.set_settings_visible(false);
-                if self.delivery == OutputMode::Preview {
-                    self.set_window_visible(true);
-                }
+                self.show_session();
             }
             Event::Transcript(text) => {
                 self.history.transcript(text);
@@ -834,13 +927,8 @@ impl Bridge {
             Event::Error(e) => {
                 self.set_status_text(String::from("Action failed"));
                 self.set_error_text(e);
-                if self.audio_available {
-                    self.set_settings_visible(false);
-                    self.set_window_visible(true);
-                    self.set_osd_visible(false);
-                } else {
-                    self.set_osd_visible(true);
-                }
+                self.set_settings_visible(false);
+                self.show_session();
             }
             Event::Result {
                 original,
@@ -852,24 +940,25 @@ impl Bridge {
                 if let Some(w) = warning {
                     self.set_status_text(String::from("Original text retained"));
                     self.set_error_text(w);
-                    if self.delivery != OutputMode::Preview {
-                        self.set_window_visible(true);
-                    }
+                    self.show_session();
                     return;
                 }
                 if !accepted {
                     self.set_status_text(String::from("Your edits have been saved"));
+                    self.show_session();
                     return;
                 }
                 self.set_status_text(String::from("Text ready"));
                 match self.delivery {
-                    OutputMode::Preview => self.set_status_text(String::from("Text ready")),
+                    OutputMode::Preview => self.show_session(),
                     mode => {
                         if let Err(e) = clipboard::set_text(&edited) {
                             self.set_error_text(e.to_string());
-                            self.set_window_visible(true);
+                            self.show_session();
                         } else if mode == OutputMode::Clipboard {
                             self.toast("Copied");
+                            self.set_osd_visible(false);
+                            self.set_window_visible(false);
                         } else if self.paste_ready || self.paste_saved {
                             self.set_status_text(String::from("Text ready. Pasting…"));
                             if let Some(paste) = self.paste.as_ref() {
@@ -877,8 +966,10 @@ impl Bridge {
                             }
                         } else {
                             self.set_paste_error(true);
-                            self.set_error_text(String::from("Text copied. Connect automatic paste in settings or paste manually."));
-                            self.set_window_visible(true);
+                            self.set_error_text(String::from(
+                                "Text copied. Automatic paste is unavailable. Paste manually.",
+                            ));
+                            self.show_session();
                         }
                     }
                 }
@@ -909,7 +1000,11 @@ impl Bridge {
                 self.set_paste_saved(PasteService::has_saved_permission());
                 self.set_paste_status(e);
             }
-            PasteEvent::Done => self.toast("Pasted"),
+            PasteEvent::Done => {
+                self.toast("Pasted");
+                self.set_osd_visible(false);
+                self.set_window_visible(false);
+            }
             PasteEvent::Error(e) => {
                 self.set_paste_ready(false);
                 self.set_paste_error(true);
@@ -921,7 +1016,7 @@ impl Bridge {
                     "Automatic paste disconnected. You can copy text manually.",
                 ));
                 self.set_error_text(e);
-                self.set_window_visible(true);
+                self.show_session();
             }
         }
     }

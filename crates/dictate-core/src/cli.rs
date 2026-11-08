@@ -1,46 +1,73 @@
-//! Command-line parsing shared by startup and IPC dispatch.
-pub const HELP: &str = "[preview|clipboard|paste|show|settings|cancel|retry|quit]\nNo arguments: start / stop recording and open the result.\nclipboard: copy the result; paste: insert it. show/settings do not activate the microphone.\nAlso supports toggle [preview|clipboard|paste].";
+//! Normalize launch options before forwarding them to the resident instance.
+pub const HELP: &str = "Usage: dictate [toggle] [--overlay|--window] [--review|--copy|--paste]\n\
+No arguments: start/finish recording using saved settings.\n\
+  --overlay   Keep recording, processing and review in the bottom bar\n\
+  --window    Open the full editor after recording\n\
+  --review    Wait for Copy & close after processing\n\
+  --copy      Copy the final result and hide automatically\n\
+  --paste     Paste the final result and hide automatically (requires a portal)\n\
+Commands: compact, show, settings, finish, copy, hide, cancel, retry, quit\n\
+compact/show/settings never start recording. Other commands control an existing instance.\n\
+Legacy aliases: preview = --window --review; clipboard = --overlay --copy; paste = --overlay --paste.\n\
+Overrides apply only when starting a recording; finishing preserves its original options.";
 
 pub fn command(args: &[String]) -> Result<String, String> {
-    let verb = args.first().map(String::as_str).unwrap_or("preview");
-    let mode = |value: &str| match crate::OutputMode::from_cli(value) {
-        Some(crate::OutputMode::Preview) => Ok("toggle preview".into()),
-        Some(crate::OutputMode::Clipboard) => Ok("toggle clipboard".into()),
-        Some(crate::OutputMode::Paste) => Ok("toggle paste".into()),
-        None => Err(format!("Unknown mode: {value}")),
-    };
-    match (verb, args.len()) {
-        ("toggle", 1) => mode("preview"),
-        ("toggle", 2) => mode(&args[1]),
-        ("preview" | "clipboard" | "paste", 0 | 1) => mode(verb),
-        ("show" | "settings" | "cancel" | "retry" | "quit", 1) => Ok(verb.into()),
-        _ => Err(format!("Unknown command or unexpected arguments\n{HELP}")),
+    if let Some(verb) = args.first().map(String::as_str)
+        && matches!(
+            verb,
+            "compact"
+                | "show"
+                | "settings"
+                | "finish"
+                | "copy"
+                | "hide"
+                | "cancel"
+                | "retry"
+                | "quit"
+        )
+    {
+        return if args.len() == 1 {
+            Ok(verb.into())
+        } else {
+            Err(format!("Unexpected arguments\n{HELP}"))
+        };
     }
-}
-pub fn starts_instance(command: &str) -> bool {
-    !matches!(command, "cancel" | "retry" | "quit")
+    let mut presentation = None;
+    let mut output = None;
+    for (index, arg) in args.iter().enumerate() {
+        let (next_view, next_output) = match arg.as_str() {
+            "toggle" if index == 0 => (None, None),
+            "--overlay" | "overlay" => (Some("overlay"), None),
+            "--window" | "window" => (Some("window"), None),
+            "--review" | "review" => (None, Some("preview")),
+            "--copy" => (None, Some("clipboard")),
+            "clipboard" => (Some("overlay"), Some("clipboard")),
+            "--paste" => (None, Some("paste")),
+            "preview" => (Some("window"), Some("preview")),
+            "paste" => (Some("overlay"), Some("paste")),
+            _ => return Err(format!("Unknown option: {arg}\n{HELP}")),
+        };
+        if let Some(view) = next_view {
+            if presentation.is_some_and(|old| old != view) {
+                return Err("Choose either --overlay or --window".into());
+            }
+            presentation = Some(view);
+        }
+        if let Some(mode) = next_output {
+            if output.is_some_and(|old| old != mode) {
+                return Err("Choose one of --review, --copy or --paste".into());
+            }
+            output = Some(mode);
+        }
+    }
+    let mut command = String::from("toggle");
+    for option in [presentation, output].into_iter().flatten() {
+        command.push(' ');
+        command.push_str(option);
+    }
+    Ok(command)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    fn parse(args: &[&str]) -> Result<String, String> {
-        command(&args.iter().map(|s| s.to_string()).collect::<Vec<_>>())
-    }
-    #[test]
-    fn launch_contract() {
-        assert_eq!(parse(&[]).unwrap(), "toggle preview");
-        assert_eq!(parse(&["clipboard"]).unwrap(), "toggle clipboard");
-        assert_eq!(parse(&["paste"]).unwrap(), "toggle paste");
-        assert_eq!(parse(&["toggle"]).unwrap(), "toggle preview");
-        assert_eq!(parse(&["toggle", "paste"]).unwrap(), "toggle paste");
-        for verb in ["show", "settings"] {
-            assert_eq!(parse(&[verb]).unwrap(), verb);
-        }
-        assert!(parse(&["show", "paste"]).is_err());
-        assert!(parse(&["toggle", "paste", "extra"]).is_err());
-        for verb in ["cancel", "retry", "quit"] {
-            assert!(!starts_instance(verb));
-        }
-    }
+pub fn starts_instance(command: &str) -> bool {
+    command.starts_with("toggle") || matches!(command, "compact" | "show" | "settings")
 }

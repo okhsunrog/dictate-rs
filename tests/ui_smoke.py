@@ -189,7 +189,9 @@ while running:
         # XTest events track releases correctly when a shortcut hides its window.
         run("xdotool", "keyup", "Escape", "ctrl", "Return")
         with log_path.open("w") as log:
-            process = subprocess.Popen([executable], env=env, stdout=log, stderr=log)
+            process = subprocess.Popen(
+                [executable, "--window", "--review"], env=env, stdout=log, stderr=log
+            )
 
             def command(*args):
                 run(executable, *args, env=env)
@@ -319,6 +321,7 @@ while running:
                 assert not main_window(), "clipboard delivery opened the editor"
                 server.release_edit.clear()
                 server.edit_started.clear()
+                command("show")
                 command("retry")
                 assert server.edit_started.wait(4)
                 wid = wait_for(main_window, "retry did not open editor")

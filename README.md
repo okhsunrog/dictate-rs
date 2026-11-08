@@ -1,9 +1,9 @@
 # Dictate
 
 Voice dictation for Linux Wayland desktops. Start recording with a shortcut,
-press it again to stop, then review the transcript and its edited version.
-You can also send the result straight to the clipboard or paste it into the
-focused application.
+press it again to stop, then review the result in a compact bottom bar.
+Copy and close in one click, expand into the editor, or configure automatic
+copying or pasting after processing.
 
 The application uses **Rust, Qt Bridge for Rust and Qt Quick/QML**. A small
 LayerShellQt overlay shows recording time, microphone level and processing status
@@ -16,8 +16,9 @@ without taking keyboard focus. The interface is in English.
 - Captures mono, 16 kHz audio through PipeWire.
 - Transcribes the completed recording, then asks an editing model to remove
   filler words, fix punctuation and apply spoken corrections.
-- Opens an editable preview as soon as recording stops; the raw transcript
-  appears before editing finishes.
+- Keeps recording, processing and a short result preview in a non-focusing bar.
+- Expands into an editable window on request; the raw transcript appears before
+  editing finishes.
 - Preserves manual edits when a delayed model response arrives.
 - Keeps the last ten drafts in memory and retains the latest audio for retry.
 - Supports cancellation, retry, clipboard delivery and optional automatic paste.
@@ -116,25 +117,53 @@ code (`en`) for recognition.
 
 | Command | Action |
 | --- | --- |
-| `dictate` / `dictate preview` | Start or stop recording, then show the preview |
-| `dictate clipboard` | Start recording and copy the final result when ready |
-| `dictate paste` | Start recording and paste the final result when ready |
-| `dictate show` | Open the window without recording |
+| `dictate` | Start/finish recording using saved defaults |
+| `dictate --overlay --review` | Record, review in the bar, then Copy & close |
+| `dictate --overlay --copy` | Record, copy the final edited text and hide automatically |
+| `dictate --window --review` | Record, then open the full editor |
+| `dictate --paste` | Use saved presentation, paste the final text and hide automatically |
+| `dictate compact` | Show the bar without recording; reopen the latest result |
+| `dictate show` | Open/expand the full editor without recording |
 | `dictate settings` | Open settings without recording |
-| `dictate cancel` | Cancel recording or processing |
-| `dictate retry` | Retry the retained audio, or only editing if a transcript exists |
-| `dictate quit` | Stop the application |
+| `dictate finish` | Finish an active recording; otherwise do nothing |
+| `dictate copy` | Copy the current result and hide both views |
+| `dictate hide` / `dictate cancel` | Hide; cancel recording/processing if active |
+| `dictate retry` | Review a retry of retained audio, or only editing if a transcript exists |
+| `dictate quit` | Stop the resident process and discard in-memory history |
 
-The output mode is chosen when recording starts. Any subsequent recording command
-stops that recording without changing its mode. `toggle [preview|clipboard|paste]`
-is also accepted. In the editor, **Ctrl+Enter** copies and hides the window;
-**Escape** hides it. Closing the main window exits the application.
+**Settings → Workflow** has two independent defaults: result view (compact bar or
+full editor), and completion action (review, automatic copy, automatic paste).
+The default is **compact bar + review**. All recordings start in the bar; window
+mode opens the editor after recording stops. The bar never takes keyboard focus.
+
+Flags override the saved defaults for one recording. A second launch finishes
+that recording without changing its selected options. Conflicting flags are
+rejected. Legacy `preview`, `clipboard` and `paste` aliases remain available;
+`preview` opens the full editor, `clipboard` and `paste` use the bar.
+
+The bar shows the beginning of the transcript with **Copy & close** and an expand
+button. Expanding during recording or processing switches that recording to
+manual review. Automatic copy/paste hides both views immediately on success. Errors
+remain visible, with the original transcript and audio retained for review or
+retry; an editing failure never silently copies an unfinished result. Retry
+always returns to review rather than automatically delivering text.
+
+**Copy & close** hides the interface while retaining the latest recording and
+history until `dictate quit`. `compact` or `show` reopens them. Closing the full
+editor with its cross exits the application. In the editor, **Ctrl+Enter** copies
+and hides both views, **Ctrl+M** returns to the bar, and **Escape** hides/cancels.
+These local shortcuts apply only when the editor has focus. Use desktop bindings
+for the non-focusing bar.
 
 For Niri, use an absolute path to the installed binary and choose an unused key:
 
 ```kdl
 binds {
     Mod+D { spawn "/home/YOUR_USER/.local/bin/dictate"; }
+    Mod+Shift+D { spawn "/home/YOUR_USER/.local/bin/dictate" "--overlay" "--copy"; }
+    Mod+Ctrl+D { spawn "/home/YOUR_USER/.local/bin/dictate" "--window" "--review"; }
+    Mod+Return { spawn "/home/YOUR_USER/.local/bin/dictate" "copy"; }
+    Mod+Escape { spawn "/home/YOUR_USER/.local/bin/dictate" "cancel"; }
 }
 
 window-rule {

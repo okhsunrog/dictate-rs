@@ -80,6 +80,12 @@ QtObject {
                 c.moveTo(4, 7); c.lineTo(20, 7); c.moveTo(4, 17); c.lineTo(20, 17); c.stroke()
                 c.beginPath(); c.fillStyle = app.canvas; c.arc(9, 7, 3, 0, Math.PI * 2); c.fill(); c.stroke()
                 c.beginPath(); c.arc(15, 17, 3, 0, Math.PI * 2); c.fill(); break
+            case "expand":
+                c.moveTo(4, 10); c.lineTo(4, 4); c.lineTo(10, 4)
+                c.moveTo(14, 4); c.lineTo(20, 4); c.lineTo(20, 10)
+                c.moveTo(20, 14); c.lineTo(20, 20); c.lineTo(14, 20)
+                c.moveTo(10, 20); c.lineTo(4, 20); c.lineTo(4, 14); break
+            case "compact": c.roundedRect(3, 10, 18, 8, 3, 3); break
             case "copy": c.roundedRect(8, 8, 12, 13, 2, 2); c.moveTo(15, 4); c.lineTo(4, 4); c.lineTo(4, 16); break
             case "back": c.moveTo(13, 5); c.lineTo(6, 12); c.lineTo(13, 19); c.moveTo(6, 12); c.lineTo(21, 12); break
             case "close": c.moveTo(6, 6); c.lineTo(18, 18); c.moveTo(18, 6); c.lineTo(6, 18); break
@@ -244,8 +250,9 @@ QtObject {
             function onOriginalTextChanged() { refreshEditor() }
             function onShowingOriginalChanged() { refreshEditor() }
         }
-        Shortcut { sequence: "Ctrl+Return"; enabled: !bridge.settingsVisible && editor.text.trim().length > 0; onActivated: bridge.copyAndClose() }
-        Shortcut { sequence: "Escape"; onActivated: bridge.windowVisible = false }
+        Shortcut { sequence: "Ctrl+Return"; enabled: !bridge.settingsVisible && bridge.phase === 0 && editor.text.trim().length > 0; onActivated: bridge.copyAndClose() }
+        Shortcut { sequence: "Escape"; onActivated: bridge.hide() }
+        Shortcut { sequence: "Ctrl+M"; enabled: !bridge.settingsVisible; onActivated: bridge.showCompact() }
         header: Item {
             implicitHeight: 76
             MouseArea {
@@ -263,7 +270,13 @@ QtObject {
                     glyph: bridge.settingsVisible ? "back" : "settings"
                     text: bridge.settingsVisible ? qsTr("Back") : qsTr("Settings")
                     quiet: true
-                    onClicked: bridge.settingsVisible = !bridge.settingsVisible
+                    onClicked: { if (bridge.settingsVisible) bridge.backFromSettings(); else bridge.openSettings() }
+                }
+                Action {
+                    glyph: "compact"; quiet: true
+                    visible: !bridge.settingsVisible
+                    Accessible.name: qsTr("Compact bar (Ctrl+M)")
+                    onClicked: bridge.showCompact()
                 }
                 Action {
                     glyph: "history"; quiet: true
@@ -312,7 +325,7 @@ QtObject {
                             visible: !bridge.pasteError
                             Layout.fillWidth: true; spacing: 8
                             Action { text: qsTr("Retry"); quiet: true; visible: !bridge.pasteError; enabled: bridge.canRetry && bridge.phase === 0; onClicked: bridge.retry() }
-                            Action { text: qsTr("Open settings"); quiet: true; onClicked: bridge.settingsVisible = true }
+                            Action { text: qsTr("Open settings"); quiet: true; onClicked: bridge.openSettings() }
                         }
                     }
                 }
@@ -407,6 +420,28 @@ QtObject {
                             spacing: 10
                             Text { text: qsTr("Settings"); color: app.ink; font.pixelSize: 28; font.weight: Font.DemiBold; font.letterSpacing: -0.5 }
                             Caption { text: qsTr("Choose how your voice becomes text."); Layout.fillWidth: true }
+                            Section { title: qsTr("Workflow"); description: qsTr("Set the defaults for your recording shortcut.") }
+                            FieldLabel { text: qsTr("Result view") }
+                            Choice {
+                                Layout.fillWidth: true
+                                model: [qsTr("Compact bottom bar"), qsTr("Full editor")]
+                                currentIndex: bridge.cfgPresentation
+                                onActivated: bridge.cfgPresentation = currentIndex
+                                Accessible.name: qsTr("Result view")
+                            }
+                            FieldLabel { text: qsTr("After processing") }
+                            Choice {
+                                Layout.fillWidth: true
+                                model: [qsTr("Review, then copy & close"), qsTr("Copy & close automatically"), qsTr("Paste & close automatically")]
+                                currentIndex: bridge.cfgOutput
+                                onActivated: bridge.cfgOutput = currentIndex
+                                Accessible.name: qsTr("After processing")
+                            }
+                            Caption {
+                                text: bridge.cfgOutput === 2 ? qsTr("Automatic paste requires desktop portal support. The text is also copied to the clipboard.") : bridge.cfgOutput === 1 ? qsTr("The final edited text is copied and the interface closes. Errors stay visible for review.") : qsTr("Review the beginning of the result in the bar, or expand it to edit the full text.")
+                                Layout.fillWidth: true
+                            }
+                            Rule { Layout.topMargin: 12 }
                             Section { title: qsTr("Transcription"); description: qsTr("The service that turns your recording into words.") }
                             Choice {
                                 Layout.fillWidth: true
@@ -492,11 +527,14 @@ QtObject {
     }
     property Window osd: Window {
         id: osdWin
-        width: 400; height: osdContent.implicitHeight + 36
+        title: "Dictate bar"
+        width: Math.min(620, screen.width - 32)
+        height: osdContent.implicitHeight + 36
         visible: bridge.osdVisible
         color: "transparent"
         flags: Qt.FramelessWindowHint
         LayerShell.Window.anchors: LayerShell.Window.AnchorBottom
+        LayerShell.Window.margins: ({ top: 0, left: 0, right: 0, bottom: 16 })
         LayerShell.Window.layer: LayerShell.Window.LayerOverlay
         LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityNone
         LayerShell.Window.exclusionZone: 0
@@ -504,41 +542,73 @@ QtObject {
         LayerShell.Window.scope: "dictate"
         Rectangle {
             anchors.fill: parent; anchors.margins: 6
-            color: app.surface; radius: 18; border.color: app.line
+            color: app.surface; radius: 16; border.color: app.line
             ColumnLayout {
                 id: osdContent
-                anchors.fill: parent; anchors.margins: 12; spacing: 8
+                anchors.fill: parent; anchors.margins: 12; spacing: 10
                 RowLayout {
                     spacing: 12
                     Rectangle {
-                        width: 34; height: 34; radius: 11; color: bridge.phase === 1 ? app.dangerSoft : app.accentSoft
-                        Glyph { anchors.centerIn: parent; name: bridge.phase === 1 ? "mic" : "check"; tint: bridge.phase === 1 ? app.danger : app.accent }
+                        width: 34; height: 34; radius: 11
+                        color: bridge.phase === 1 ? app.dangerSoft : app.accentSoft
+                        Glyph {
+                            anchors.centerIn: parent
+                            name: bridge.phase === 1 || !bridge.hasResult ? "mic" : "check"
+                            tint: bridge.phase === 1 ? app.danger : app.accent
+                        }
                     }
                     ColumnLayout {
-                        spacing: 2; Layout.fillWidth: true
-                        Text { text: bridge.phase === 1 ? qsTr("Recording") : bridge.errorText.length ? qsTr("Recording failed") : bridge.statusText; color: app.ink; font.pixelSize: 13; font.weight: Font.Medium; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                        Caption { visible: bridge.phase === 1; text: "%1:%2".arg(Math.floor(bridge.seconds / 60)).arg(("0" + bridge.seconds % 60).slice(-2)) }
+                        spacing: 4; Layout.fillWidth: true
+                        RowLayout {
+                            Layout.fillWidth: true; spacing: 10
+                            Text {
+                                text: bridge.phase === 1 ? qsTr("Recording") : bridge.errorText.length ? qsTr("Needs attention") : bridge.phase > 1 ? bridge.statusText : bridge.hasResult ? qsTr("Ready to copy") : qsTr("Ready to record")
+                                color: app.ink; font.pixelSize: 13; font.weight: Font.Medium
+                                elide: Text.ElideRight; Layout.fillWidth: true
+                            }
+                            Caption { visible: bridge.phase === 1; text: "%1:%2".arg(Math.floor(bridge.seconds / 60)).arg(("0" + bridge.seconds % 60).slice(-2)) }
+                        }
+                        Text {
+                            visible: bridge.hasResult && bridge.phase !== 1
+                            text: (bridge.showingOriginal ? bridge.originalText : bridge.editedText).replace(/\s+/g, " ")
+                            color: app.muted; font.pixelSize: 13
+                            wrapMode: Text.WordWrap; maximumLineCount: 2; elide: Text.ElideRight
+                            Layout.fillWidth: true
+                        }
                     }
-                    Action { glyph: "stop"; primary: true; visible: bridge.phase === 1; Accessible.name: qsTr("Finish recording"); onClicked: bridge.toggle() }
-                    Action { glyph: "close"; quiet: true; Accessible.name: bridge.phase === 0 ? qsTr("Close") : qsTr("Cancel"); onClicked: { if (bridge.phase === 0) bridge.osdVisible = false; else bridge.cancel() } }
+                    Action { text: qsTr("Finish"); glyph: "stop"; primary: true; visible: bridge.phase === 1; onClicked: bridge.toggle() }
+                    Action { text: qsTr("Record"); glyph: "mic"; primary: true; visible: bridge.phase === 0 && !bridge.hasResult && bridge.errorText.length === 0; onClicked: bridge.toggle() }
+                    Action { text: qsTr("Copy & close"); glyph: "copy"; primary: true; visible: bridge.phase === 0 && bridge.hasResult; onClicked: bridge.copyAndClose() }
+                    Action { glyph: "expand"; quiet: true; Accessible.name: qsTr("Open full editor"); onClicked: bridge.expand() }
+                    Action { glyph: "close"; quiet: true; Accessible.name: bridge.phase === 0 ? qsTr("Hide bar") : qsTr("Cancel"); onClicked: bridge.hide() }
                 }
                 Row {
                     visible: bridge.phase === 1
-                    spacing: 3
-                    Layout.fillWidth: true
+                    spacing: 3; Layout.fillWidth: true
                     Repeater {
-                        model: 36
+                        model: 48
                         Rectangle {
                             required property int index
-                            width: (osdContent.width - 35 * 3) / 36; height: 3; radius: 1.5
-                            color: index / 36 < bridge.level ? app.accent : app.line
+                            width: Math.max(1, (osdContent.width - 47 * 3) / 48); height: 3; radius: 1.5
+                            color: index / 48 < bridge.level ? app.accent : app.line
                         }
                     }
                 }
-                Caption { visible: bridge.errorText.length > 0; text: bridge.errorText; color: app.danger; Layout.fillWidth: true }
+                Text {
+                    visible: bridge.errorText.length > 0
+                    text: bridge.errorText; color: app.danger; font.pixelSize: 12
+                    wrapMode: Text.WordWrap; maximumLineCount: 3; elide: Text.ElideRight
+                    Layout.fillWidth: true
+                }
+                RowLayout {
+                    visible: bridge.errorText.length > 0 && bridge.phase === 0
+                    Layout.fillWidth: true; spacing: 8
+                    Action { text: qsTr("Retry"); quiet: true; visible: bridge.canRetry && !bridge.pasteError; onClicked: bridge.retry() }
+                    Action { text: qsTr("Settings"); glyph: "settings"; quiet: true; visible: !bridge.pasteError; onClicked: bridge.openSettings() }
+                    Item { Layout.fillWidth: true }
+                }
             }
         }
-        Timer { interval: 1800; running: bridge.osdVisible && bridge.phase === 0 && bridge.errorText.length === 0; onTriggered: bridge.osdVisible = false }
     }
     Component.onCompleted: {
         Qt.application.domain = "okhsunrog.ru"

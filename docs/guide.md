@@ -35,8 +35,14 @@ provider fallbacks. See the [API contract](../README.md#service-configuration).
 2. Run `dictate` or press your configured shortcut.
 3. Speak while the overlay displays recording time and input level.
 4. Run `dictate` again or click **Finish**.
-5. Review the original transcript, followed by the edited text.
-6. Make any corrections and click **Copy**.
+5. Wait for processing in the bar. The beginning of the result appears there.
+6. Click **Copy & close** to copy the full result and hide the interface, or click
+   the expand icon to review and edit the full transcript.
+
+In **Settings → Workflow**, choose the result view and what happens after
+processing. **Copy & close automatically** removes the last confirmation click:
+press your shortcut to record, press it again to finish, and the final edited
+text is copied as soon as it is ready. Errors remain visible instead of closing.
 
 Spoken corrections such as "Wednesday at three, no, Thursday at two" are applied
 by the editor. The editor preserves the dictation language. Transcription starts
@@ -47,7 +53,8 @@ after recording stops. Recordings are limited to ten minutes and 25 MiB.
 Drag the header to move the floating window without a compositor modifier key.
 
 - `dictate show` opens the window; `dictate settings` opens settings.
-- Ctrl+Enter copies the text and hides the window. Escape hides it.
+- Ctrl+Enter copies and hides both views. Ctrl+M returns to the bar.
+- Escape hides the interface and cancels active processing.
 - Closing the window exits, stops recording and cancels processing.
 - The history button opens recent drafts. **Edited** and **Original** switch
   transcript views; retry actions appear beside the result.
@@ -55,10 +62,17 @@ Drag the header to move the floating window without a compositor modifier key.
 - A delayed model response does not replace manual edits.
 - The last ten drafts are kept until exit.
 
-`dictate clipboard` records and copies the result without preview.
-`dictate paste` records and pastes automatically. A repeated recording command
-stops the current recording while retaining its selected delivery mode.
-`cancel`, `retry` and `quit` control an existing instance.
+`dictate` uses your saved workflow. `dictate --overlay --copy` records and copies
+automatically; `dictate --window --review` opens the full editor after recording.
+`dictate --paste` automatically pastes using the saved result view. A second
+recording command finishes the current recording without changing its options.
+
+`dictate compact` opens only the bar without recording. `dictate show` opens the
+full editor. `dictate copy` copies the ready result and hides both views;
+`dictate finish` only stops an existing recording. These commands can be bound
+to global desktop shortcuts, so the bar does not need keyboard focus.
+`cancel`, `retry` and `quit` control an existing instance. Retry always waits for
+review. Hiding the bar retains history; quitting discards it.
 
 ## Shortcuts and window size
 
@@ -67,6 +81,10 @@ For Niri, choose an unused shortcut and use your own absolute binary path:
 ```kdl
 binds {
     Mod+D { spawn "/home/YOUR_USER/.local/bin/dictate"; }
+    Mod+Shift+D { spawn "/home/YOUR_USER/.local/bin/dictate" "--overlay" "--copy"; }
+    Mod+Ctrl+D { spawn "/home/YOUR_USER/.local/bin/dictate" "--window" "--review"; }
+    Mod+Return { spawn "/home/YOUR_USER/.local/bin/dictate" "copy"; }
+    Mod+Escape { spawn "/home/YOUR_USER/.local/bin/dictate" "cancel"; }
 }
 
 window-rule {

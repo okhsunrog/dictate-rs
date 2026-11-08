@@ -14,5 +14,11 @@ elevenlabs_api_key = ""
 language = ""
 microphone = ""
 
+# Default workflow. Flags can override either choice for one recording.
+# presentation: overlay (compact bottom bar) or window (editor after recording).
+presentation = "overlay"
+# output: preview (review, then Copy & close), clipboard (auto copy), paste.
+output = "preview"
+
 # Send Ctrl+Shift+V instead of Ctrl+V in paste mode.
 paste_shift = false
