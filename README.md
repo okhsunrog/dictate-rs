@@ -30,7 +30,7 @@ remote service; the application does not include a local speech model.
 
 - Linux with PipeWire and a Wayland compositor supporting layer-shell, such as
   Niri or KDE Plasma. An ordinary-window fallback is available on X11.
-- `pw-record` and `wl-copy` in `PATH`.
+- `pw-record`, `pw-dump` and `wl-copy` in `PATH`.
 - A service implementing the API contract described below.
 - For automatic paste: a working **RemoteDesktop portal with libei/EIS support**.
   This is a separate compositor/portal capability. In particular, standard Niri

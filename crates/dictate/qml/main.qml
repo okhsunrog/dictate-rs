@@ -23,6 +23,43 @@ QtObject {
     readonly property color danger: dark ? "#ffb4ae" : "#af3434"
     readonly property color dangerSoft: dark ? "#3c2b35" : "#fff0ee"
 
+    readonly property var languages: [
+        { code: "", label: "Automatic detection" },
+        { code: "ar", label: "Arabic" }, { code: "bg", label: "Bulgarian" },
+        { code: "ca", label: "Catalan" }, { code: "zh", label: "Chinese" },
+        { code: "hr", label: "Croatian" }, { code: "cs", label: "Czech" },
+        { code: "da", label: "Danish" }, { code: "nl", label: "Dutch" },
+        { code: "en", label: "English" }, { code: "et", label: "Estonian" },
+        { code: "fi", label: "Finnish" }, { code: "fr", label: "French" },
+        { code: "de", label: "German" }, { code: "el", label: "Greek" },
+        { code: "he", label: "Hebrew" }, { code: "hi", label: "Hindi" },
+        { code: "hu", label: "Hungarian" }, { code: "id", label: "Indonesian" },
+        { code: "it", label: "Italian" }, { code: "ja", label: "Japanese" },
+        { code: "ko", label: "Korean" }, { code: "lv", label: "Latvian" },
+        { code: "lt", label: "Lithuanian" }, { code: "ms", label: "Malay" },
+        { code: "no", label: "Norwegian" }, { code: "fa", label: "Persian" },
+        { code: "pl", label: "Polish" }, { code: "pt", label: "Portuguese" },
+        { code: "ro", label: "Romanian" }, { code: "ru", label: "Russian" },
+        { code: "sr", label: "Serbian" }, { code: "sk", label: "Slovak" },
+        { code: "sl", label: "Slovenian" }, { code: "es", label: "Spanish" },
+        { code: "sv", label: "Swedish" }, { code: "ta", label: "Tamil" },
+        { code: "th", label: "Thai" }, { code: "tr", label: "Turkish" },
+        { code: "uk", label: "Ukrainian" }, { code: "vi", label: "Vietnamese" }
+    ]
+    readonly property var languageOptions: {
+        let options = languages.slice()
+        if (!options.some(item => item.code === bridge.cfgLanguage))
+            options.push({ code: bridge.cfgLanguage, label: bridge.cfgLanguage })
+        return options
+    }
+    readonly property var microphoneInfo: JSON.parse(bridge.microphonesJson)
+    readonly property var microphoneOptions: {
+        let options = microphoneInfo.devices.slice()
+        if (!options.some(item => item.name === bridge.cfgMicrophone))
+            options.push({ name: bridge.cfgMicrophone, label: qsTr("Saved microphone (disconnected)") })
+        return options
+    }
+
     component Glyph: Canvas {
         property string name: "mic"
         property color tint: app.ink
@@ -49,10 +86,10 @@ QtObject {
             case "stop": c.roundedRect(6, 6, 12, 12, 2, 2); break
             case "check": c.moveTo(5, 12); c.lineTo(10, 17); c.lineTo(20, 6); break
             case "chevron": c.moveTo(6, 9); c.lineTo(12, 15); c.lineTo(18, 9); break
-            case "more":
-                c.fillStyle = tint
-                for (let x = 5; x <= 19; x += 7) { c.moveTo(x + 1, 12); c.arc(x, 12, 1, 0, Math.PI * 2) }
-                c.fill(); break
+            case "history":
+                c.arc(12, 12, 8, -Math.PI * 0.8, Math.PI * 0.9)
+                c.moveTo(3, 4); c.lineTo(3, 9); c.lineTo(8, 9)
+                c.moveTo(12, 7); c.lineTo(12, 12); c.lineTo(16, 14); break
             }
             c.stroke()
         }
@@ -72,6 +109,9 @@ QtObject {
         property bool quiet: false
         property string glyph: ""
         hoverEnabled: true
+        ToolTip.visible: hovered && text.length === 0
+        ToolTip.text: Accessible.name
+        ToolTip.delay: 600
         implicitHeight: 40
         implicitWidth: Math.max(40, contentItem.implicitWidth + (text.length ? 28 : 20))
         padding: 10
@@ -105,7 +145,18 @@ QtObject {
         implicitHeight: 42
         leftPadding: 12; rightPadding: 36
         font.pixelSize: 14
-        contentItem: Text { text: choice.displayText; font: choice.font; color: app.ink; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight }
+        contentItem: Basic.TextField {
+            text: choice.editable ? choice.editText : choice.displayText
+            readOnly: !choice.editable
+            selectByMouse: choice.editable
+            autoScroll: choice.editable
+            padding: 0
+            font: choice.font; color: app.ink
+            selectionColor: app.accent; selectedTextColor: app.accentInk
+            verticalAlignment: Text.AlignVCenter
+            background: null
+            onEditingFinished: if (choice.editable) choice.accepted()
+        }
         indicator: Glyph { name: "chevron"; tint: app.muted; x: choice.width - width - 12; y: (choice.height - height) / 2 }
         background: Rectangle { radius: 8; color: app.surface; border.color: choice.visualFocus ? app.accent : app.line; border.width: choice.visualFocus ? 2 : 1 }
         delegate: Basic.ItemDelegate {
@@ -114,7 +165,7 @@ QtObject {
             width: choice.width
             implicitHeight: 40
             highlighted: choice.highlightedIndex === index
-            contentItem: Text { text: modelData; color: app.ink; font: choice.font; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight }
+            contentItem: Text { text: choice.textRole ? modelData[choice.textRole] : modelData; color: app.ink; font: choice.font; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight }
             background: Rectangle { color: parent.highlighted ? app.hover : app.surface; radius: 6 }
         }
         popup: Basic.Popup {
@@ -185,18 +236,15 @@ QtObject {
                     onClicked: bridge.settingsVisible = !bridge.settingsVisible
                 }
                 Action {
-                    glyph: "more"; quiet: true
-                    Accessible.name: qsTr("More options")
-                    onClicked: appMenu.popup()
-                    Basic.Menu {
-                        id: appMenu
-                        palette.window: app.surface; palette.text: app.ink; palette.highlight: app.hover; palette.highlightedText: app.ink
-                        MenuItem { text: qsTr("History"); enabled: JSON.parse(bridge.historyJson).length > 1; checkable: true; checked: win.historyOpen; onTriggered: win.historyOpen = !win.historyOpen }
-                        MenuItem { text: qsTr("Original transcript"); enabled: bridge.originalText.length > 0; checkable: true; checked: bridge.showingOriginal; onTriggered: bridge.toggleOriginal() }
-                        MenuItem { text: bridge.originalText.length ? qsTr("Retry editing") : qsTr("Retry transcription"); enabled: bridge.canRetry && bridge.phase === 0; onTriggered: bridge.retry() }
-                        MenuSeparator {}
-                        MenuItem { text: qsTr("Quit"); onTriggered: bridge.teardown() }
-                    }
+                    glyph: "history"; quiet: true
+                    visible: !bridge.settingsVisible && JSON.parse(bridge.historyJson).length > 1
+                    Accessible.name: qsTr("Show history")
+                    onClicked: win.historyOpen = !win.historyOpen
+                }
+                Action {
+                    glyph: "close"; quiet: true
+                    Accessible.name: qsTr("Close Dictate")
+                    onClicked: bridge.teardown()
                 }
             }
         }
@@ -225,8 +273,13 @@ QtObject {
                     ColumnLayout {
                         id: errorContent
                         anchors.fill: parent; anchors.margins: 14; spacing: 8
-                        Text { text: bridge.errorText; color: app.danger; font.pixelSize: 13; wrapMode: Text.WordWrap; Layout.fillWidth: true; Accessible.role: Accessible.AlertMessage }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Text { text: bridge.errorText; color: app.danger; font.pixelSize: 13; wrapMode: Text.WordWrap; Layout.fillWidth: true; Accessible.role: Accessible.AlertMessage }
+                            Action { glyph: "close"; quiet: true; Accessible.name: qsTr("Dismiss notification"); onClicked: bridge.dismissError() }
+                        }
                         Flow {
+                            visible: !bridge.pasteError
                             Layout.fillWidth: true; spacing: 8
                             Action { text: qsTr("Retry"); quiet: true; visible: !bridge.pasteError; enabled: bridge.canRetry && bridge.phase === 0; onClicked: bridge.retry() }
                             Action { text: qsTr("Open settings"); quiet: true; onClicked: bridge.settingsVisible = true }
@@ -294,6 +347,7 @@ QtObject {
                         Layout.fillWidth: true; spacing: 8
                         Rectangle { width: 6; height: 6; radius: 3; color: bridge.phase > 1 ? app.accent : app.muted }
                         Caption { text: bridge.statusText; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                        Action { text: qsTr("Retry editing"); quiet: true; visible: bridge.phase === 0 && bridge.canRetry && bridge.errorText.length === 0; onClicked: bridge.retry() }
                         Action { text: qsTr("Cancel"); quiet: true; visible: bridge.phase > 1; onClicked: bridge.cancel() }
                     }
                     RowLayout {
@@ -340,18 +394,41 @@ QtObject {
                             Field { Layout.fillWidth: true; text: bridge.cfgModel; placeholderText: qsTr("Model name"); onTextEdited: bridge.cfgModel = text; Accessible.name: qsTr("Editing model") }
                             Caption { text: qsTr("Keys entered here are saved on this device. Environment keys take precedence."); Layout.fillWidth: true }
                             Rule { Layout.topMargin: 12 }
-                            Section { title: qsTr("Recording"); description: qsTr("Leave these empty to use automatic language detection and your default microphone.") }
+                            Section { title: qsTr("Recording"); description: qsTr("Choose your language and microphone.") }
                             FieldLabel { text: qsTr("Language") }
-                            Field { Layout.fillWidth: true; text: bridge.cfgLanguage; placeholderText: qsTr("Automatic"); onTextEdited: bridge.cfgLanguage = text; Accessible.name: qsTr("Language") }
-                            FieldLabel { text: qsTr("PipeWire microphone") }
-                            Field { Layout.fillWidth: true; text: bridge.cfgMicrophone; placeholderText: qsTr("System default"); onTextEdited: bridge.cfgMicrophone = text; Accessible.name: qsTr("PipeWire microphone") }
+                            Choice {
+                                Layout.fillWidth: true
+                                model: app.languageOptions; textRole: "label"; valueRole: "code"
+                                editable: true
+                                currentIndex: app.languageOptions.findIndex(item => item.code === bridge.cfgLanguage)
+                                onActivated: bridge.cfgLanguage = currentValue
+                                onAccepted: {
+                                    const value = editText.trim()
+                                    const language = app.languages.find(item => item.label.toLowerCase() === value.toLowerCase() || item.code === value.toLowerCase())
+                                    bridge.cfgLanguage = language ? language.code : value
+                                }
+                                Accessible.name: qsTr("Language")
+                            }
+                            FieldLabel { text: qsTr("Microphone") }
+                            RowLayout {
+                                Layout.fillWidth: true; spacing: 8
+                                Choice {
+                                    Layout.fillWidth: true
+                                    model: app.microphoneOptions; textRole: "label"; valueRole: "name"
+                                    currentIndex: app.microphoneOptions.findIndex(item => item.name === bridge.cfgMicrophone)
+                                    onActivated: bridge.cfgMicrophone = currentValue
+                                    Accessible.name: qsTr("Microphone")
+                                }
+                                Action { text: qsTr("Refresh"); onClicked: bridge.refreshMicrophones() }
+                            }
+                            Caption { text: app.microphoneInfo.error; visible: text.length > 0; color: app.danger; Layout.fillWidth: true }
                             Rule { Layout.topMargin: 12 }
                             Section { title: qsTr("Automatic paste"); description: qsTr("Insert the result into the focused application.") }
                             Caption {
-                                text: bridge.pasteError ? qsTr("Connection failed. You can still copy text manually.") : bridge.pasteReady ? qsTr("Connected and ready to paste.") : bridge.pasteSaved ? qsTr("Permission saved. Reconnect to check access.") : qsTr("Allow access through your desktop's permission dialog.")
+                                text: bridge.pasteStatus.length > 0 ? bridge.pasteStatus : bridge.pasteReady ? qsTr("Connected and ready to paste.") : bridge.pasteSaved ? qsTr("Permission saved. Reconnect to check access.") : qsTr("Allow access through your desktop's permission dialog.")
                                 Layout.fillWidth: true
                             }
-                            Action { text: bridge.pasteReady ? qsTr("Connected") : bridge.pasteSaved ? qsTr("Check connection") : qsTr("Connect automatic paste"); glyph: bridge.pasteReady ? "check" : ""; enabled: !bridge.pasteReady; onClicked: bridge.connectPaste() }
+                            Action { text: bridge.pasteConnecting ? qsTr("Connecting…") : bridge.pasteReady ? qsTr("Connected") : bridge.pasteSaved ? qsTr("Check connection") : qsTr("Connect automatic paste"); glyph: bridge.pasteReady ? "check" : ""; enabled: !bridge.pasteReady && !bridge.pasteConnecting; onClicked: bridge.connectPaste() }
                             Basic.CheckBox {
                                 id: terminalCheck
                                 text: qsTr("Use Ctrl+Shift+V for terminals")

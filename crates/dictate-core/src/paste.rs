@@ -10,6 +10,7 @@ use std::{
 #[derive(Debug)]
 pub enum PasteEvent {
     Connected,
+    ConnectionFailed(String),
     Done,
     Error(String),
 }
@@ -38,9 +39,7 @@ impl PasteService {
                                 connection = Some(c);
                                 emit(PasteEvent::Connected);
                             }
-                            Err(e) => emit(PasteEvent::Error(format!(
-                                "Failed to connect automatic paste: {e}"
-                            ))),
+                            Err(e) => emit(PasteEvent::ConnectionFailed(format!("{e}"))),
                         }
                     }
                     Command::Paste(shift) => {
@@ -166,9 +165,10 @@ fn connect_saved() -> Result<EiType> {
             },
             token,
         )
-        .map_err(|_| {
+        .map_err(|e| {
+            eprintln!("Automatic paste portal: {e}");
             anyhow::anyhow!(
-                "KDE did not confirm the connection. Allow automatic paste in settings."
+                "Could not connect through the desktop portal. Copy text and paste manually."
             )
         })
     })

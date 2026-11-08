@@ -47,7 +47,8 @@ after recording stops. Recordings are limited to ten minutes and 25 MiB.
 - `dictate show` opens the window; `dictate settings` opens settings.
 - Ctrl+Enter copies the text and hides the window. Escape hides it.
 - Closing the window exits, stops recording and cancels processing.
-- **More** offers history, the original transcript and retry actions.
+- The history button opens recent drafts. **Edited** and **Original** switch
+  transcript views; retry actions appear beside the result.
 - The original transcript is read-only. Switching views preserves manual edits.
 - A delayed model response does not replace manual edits.
 - The last ten drafts are kept until exit.
@@ -99,8 +100,9 @@ the file uses `0600`. Keys entered in Settings are stored as plaintext.
 settings without being written back. The ElevenLabs key is separate from the
 editor key.
 
-An empty language enables automatic detection. An empty microphone uses the
-default PipeWire input. For a specific input, use a node name from `wpctl status -n`.
+Choose a language by name, or select **Automatic detection**. You can also type
+an ISO language code. Choose a microphone from the detected PipeWire devices,
+or use **System default**. Click **Refresh** after connecting another microphone.
 
 Audio and history remain in process memory. Only the latest recording is retained
 for retry; a new recording replaces it. Exiting discards audio and history.

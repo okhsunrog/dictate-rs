@@ -51,6 +51,8 @@ pub struct Bridge {
     paste_ready: bool,
     paste_saved: bool,
     paste_error: bool,
+    paste_status: String,
+    paste_connecting: bool,
     cfg_base_url: String,
     cfg_api_key: String,
     cfg_model: String,
@@ -58,6 +60,7 @@ pub struct Bridge {
     cfg_elevenlabs_api_key: String,
     cfg_language: String,
     cfg_microphone: String,
+    microphones_json: String,
     cfg_output: i32,
     cfg_paste_shift: bool,
     settings_status: String,
@@ -96,6 +99,8 @@ impl Default for Bridge {
             paste_ready: false,
             paste_saved: PasteService::has_saved_permission(),
             paste_error: false,
+            paste_status: String::new(),
+            paste_connecting: false,
             cfg_base_url: String::default(),
             cfg_api_key: String::default(),
             cfg_model: String::default(),
@@ -103,6 +108,9 @@ impl Default for Bridge {
             cfg_elevenlabs_api_key: String::new(),
             cfg_language: String::default(),
             cfg_microphone: String::default(),
+            microphones_json: String::from(
+                r#"{"devices":[{"name":"","label":"System default"}],"error":""}"#,
+            ),
             cfg_output: 0,
             cfg_paste_shift: false,
             settings_status: String::default(),
@@ -176,6 +184,8 @@ notifying_setters! {
     paste_ready: bool => set_paste_ready, paste_ready_changed;
     paste_saved: bool => set_paste_saved, paste_saved_changed;
     paste_error: bool => set_paste_error, paste_error_changed;
+    paste_status: String => set_paste_status, paste_status_changed;
+    paste_connecting: bool => set_paste_connecting, paste_connecting_changed;
     cfg_base_url: String => set_cfg_base_url, cfg_base_url_changed;
     cfg_api_key: String => set_cfg_api_key, cfg_api_key_changed;
     cfg_model: String => set_cfg_model, cfg_model_changed;
@@ -183,6 +193,7 @@ notifying_setters! {
     cfg_elevenlabs_api_key: String => set_cfg_elevenlabs_api_key, cfg_elevenlabs_api_key_changed;
     cfg_language: String => set_cfg_language, cfg_language_changed;
     cfg_microphone: String => set_cfg_microphone, cfg_microphone_changed;
+    microphones_json: String => set_microphones_json, microphones_json_changed;
     cfg_output: i32 => set_cfg_output, cfg_output_changed;
     cfg_paste_shift: bool => set_cfg_paste_shift, cfg_paste_shift_changed;
     settings_status: String => set_settings_status, settings_status_changed;
@@ -317,6 +328,22 @@ impl Bridge {
     fn paste_error_changed(&mut self);
 
     qproperty!(
+        "pasteStatus",
+        Member = paste_status,
+        Notify = paste_status_changed
+    );
+    #[qsignal]
+    fn paste_status_changed(&mut self);
+
+    qproperty!(
+        "pasteConnecting",
+        Member = paste_connecting,
+        Notify = paste_connecting_changed
+    );
+    #[qsignal]
+    fn paste_connecting_changed(&mut self);
+
+    qproperty!(
         "cfgBaseUrl",
         Member = cfg_base_url,
         Notify = cfg_base_url_changed
@@ -356,6 +383,15 @@ impl Bridge {
 
     #[qsignal]
     fn cfg_microphone_changed(&mut self);
+
+    qproperty!(
+        "microphonesJson",
+        Member = microphones_json,
+        Notify = microphones_json_changed
+    );
+
+    #[qsignal]
+    fn microphones_json_changed(&mut self);
 
     qproperty!(
         "cfgOutput",
@@ -454,6 +490,7 @@ impl Bridge {
             self.set_settings_status(String::from(e));
         }
         self.config = config;
+        self.refresh_microphones();
 
         // Engine: events come back on the Qt thread.
         let qt = self.get_thread_handle();
@@ -630,6 +667,45 @@ impl Bridge {
     }
 
     #[qslot]
+    pub fn refresh_microphones(&mut self) {
+        let qt = self.get_thread_handle();
+        std::thread::spawn(move || {
+            let mut devices = vec![serde_json::json!({"name": "", "label": "System default"})];
+            let result = (|| -> Result<(), Box<dyn std::error::Error>> {
+                let output = std::process::Command::new("pw-dump")
+                    .stdin(std::process::Stdio::null())
+                    .output()?;
+                if !output.status.success() {
+                    return Err("PipeWire is unavailable".into());
+                }
+                let objects: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout)?;
+                for object in objects {
+                    let props = &object["info"]["props"];
+                    if props["media.class"].as_str() != Some("Audio/Source") {
+                        continue;
+                    }
+                    if let Some(name) = props["node.name"].as_str() {
+                        let label = props["node.description"]
+                            .as_str()
+                            .or_else(|| props["node.nick"].as_str())
+                            .unwrap_or(name);
+                        devices.push(serde_json::json!({"name": name, "label": label}));
+                    }
+                }
+                devices[1..].sort_by(|a, b| a["label"].as_str().cmp(&b["label"].as_str()));
+                Ok(())
+            })();
+            let error = if result.is_err() {
+                "Could not list microphones. Check that PipeWire is running and pw-dump is installed."
+            } else {
+                ""
+            };
+            let json = serde_json::json!({"devices": devices, "error": error}).to_string();
+            qt.invoke_mut(move |obj| obj.set_microphones_json(json));
+        });
+    }
+
+    #[qslot]
     pub fn save_settings(&mut self) {
         if self.phase != PHASE_IDLE {
             self.set_settings_status(String::from("Finish recording and processing first"));
@@ -660,8 +736,15 @@ impl Bridge {
     }
 
     #[qslot]
+    pub fn dismiss_error(&mut self) {
+        self.set_error_text(String::new());
+        self.set_paste_error(false);
+    }
+
+    #[qslot]
     pub fn connect_paste(&mut self) {
-        self.set_settings_status(String::from("Confirm access in the system dialog…"));
+        self.set_paste_status(String::from("Waiting for the desktop portal…"));
+        self.set_paste_connecting(true);
         if let Some(paste) = self.paste.as_ref() {
             paste.connect();
         }
@@ -807,17 +890,24 @@ impl Bridge {
     pub fn apply_paste(&mut self, event: PasteEvent) {
         match event {
             PasteEvent::Connected => {
+                self.set_paste_connecting(false);
                 self.set_paste_ready(true);
                 if self.paste_error {
                     self.set_error_text(String::default());
                     self.set_paste_error(false);
                 }
                 self.set_paste_saved(PasteService::has_saved_permission());
-                self.set_settings_status(String::from(if PasteService::has_saved_permission() {
+                self.set_paste_status(String::from(if PasteService::has_saved_permission() {
                     "Automatic paste connected. Permission saved for future launches."
                 } else {
                     "Automatic paste connected, but the portal did not grant permission for future launches."
                 }));
+            }
+            PasteEvent::ConnectionFailed(e) => {
+                self.set_paste_connecting(false);
+                self.set_paste_ready(false);
+                self.set_paste_saved(PasteService::has_saved_permission());
+                self.set_paste_status(e);
             }
             PasteEvent::Done => self.toast("Pasted"),
             PasteEvent::Error(e) => {
@@ -827,7 +917,9 @@ impl Bridge {
                 if self.has_result {
                     self.set_status_text(String::from("Text ready"));
                 }
-                self.set_settings_status(e.clone());
+                self.set_paste_status(String::from(
+                    "Automatic paste disconnected. You can copy text manually.",
+                ));
                 self.set_error_text(e);
                 self.set_window_visible(true);
             }
