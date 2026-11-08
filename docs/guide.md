@@ -44,6 +44,8 @@ after recording stops. Recordings are limited to ten minutes and 25 MiB.
 
 ## Window and history
 
+Drag the header to move the floating window without a compositor modifier key.
+
 - `dictate show` opens the window; `dictate settings` opens settings.
 - Ctrl+Enter copies the text and hides the window. Escape hides it.
 - Closing the window exits, stops recording and cancels processing.

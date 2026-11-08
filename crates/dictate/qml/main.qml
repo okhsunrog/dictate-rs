@@ -140,6 +140,24 @@ QtObject {
         selectByMouse: true
         background: Rectangle { radius: 8; color: app.surface; border.color: field.activeFocus ? app.accent : app.line; border.width: field.activeFocus ? 2 : 1 }
     }
+    component ScrollRail: Basic.ScrollBar {
+        id: rail
+        orientation: Qt.Vertical
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        anchors.right: parent.right
+        implicitWidth: 12
+        implicitHeight: 40
+        padding: 3
+        minimumSize: 0.12
+        hoverEnabled: true
+        policy: ScrollBar.AsNeeded
+        contentItem: Rectangle {
+            implicitWidth: 6; implicitHeight: 6; radius: 3
+            color: rail.pressed ? app.accent : rail.hovered ? app.muted : app.line
+        }
+        background: Item {}
+    }
     component Choice: Basic.ComboBox {
         id: choice
         implicitHeight: 42
@@ -172,7 +190,13 @@ QtObject {
             y: choice.height + 5; width: choice.width; padding: 5
             implicitHeight: Math.min(contentItem.implicitHeight + 10, 220)
             background: Rectangle { color: app.surface; border.color: app.line; radius: 10 }
-            contentItem: ListView { clip: true; implicitHeight: contentHeight; model: choice.popup.visible ? choice.delegateModel : null; currentIndex: choice.highlightedIndex; boundsBehavior: Flickable.StopAtBounds }
+            contentItem: ListView {
+                clip: true; implicitHeight: contentHeight
+                model: choice.popup.visible ? choice.delegateModel : null
+                currentIndex: choice.highlightedIndex
+                boundsBehavior: Flickable.StopAtBounds
+                ScrollBar.vertical: ScrollRail {}
+            }
         }
     }
     component Caption: Text {
@@ -224,6 +248,12 @@ QtObject {
         Shortcut { sequence: "Escape"; onActivated: bridge.windowVisible = false }
         header: Item {
             implicitHeight: 76
+            MouseArea {
+                anchors.fill: parent
+                acceptedButtons: Qt.LeftButton
+                cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+                onPressed: win.startSystemMove()
+            }
             RowLayout {
                 anchors.fill: parent; anchors.leftMargin: 28; anchors.rightMargin: 24
                 spacing: 12
@@ -323,6 +353,8 @@ QtObject {
                         Layout.fillWidth: true; Layout.fillHeight: true
                         color: app.surface; radius: 12; border.color: editor.activeFocus ? app.accent : app.line
                         ScrollView {
+                    ScrollBar.vertical: ScrollRail {}
+                    ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
                             id: textScroll
                             anchors.fill: parent; anchors.margins: 1
                             clip: true
@@ -363,6 +395,8 @@ QtObject {
             ColumnLayout {
                 spacing: 0
                 ScrollView {
+                    ScrollBar.vertical: ScrollRail {}
+                    ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
                     Layout.fillWidth: true; Layout.fillHeight: true
                     clip: true; contentWidth: availableWidth
                     ColumnLayout {
